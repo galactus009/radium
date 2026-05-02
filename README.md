@@ -92,6 +92,14 @@ Build/       shell scripts for one-command builds
   its tradebook/position/orderbook logic.
 - mORMot for HTTP, WS, JSON, SQLite (when added).
 
+The thoriumd wire shapes Radium pins itself to are documented as a
+**hardcoded contract** in `Docs/ThoriumdContract.md`. Treat it as
+required reading before touching anything in `Source/Api/`.
+
+The visual language (colour palette, typography, menu-driven shell) is
+pinned the same way in `Docs/LookAndFeel.md`. Required reading before
+touching anything in `Source/Gui/`.
+
 ## Non-goals
 
 - Direct broker connectivity (thoriumd handles it).

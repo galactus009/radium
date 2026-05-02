@@ -42,6 +42,107 @@
         <ResourceBaseClass Value="rtForm"/>
         <UnitName Value="Radium.Gui.MainForm"/>
       </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.Theme.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.Theme"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Settings.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Settings"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.SetupForm.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="SetupForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="rtForm"/>
+        <UnitName Value="Radium.Gui.SetupForm"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.AttachBrokerForm.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="AttachBrokerForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="rtForm"/>
+        <UnitName Value="Radium.Gui.AttachBrokerForm"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.SessionsFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.SessionsFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.BrokersFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.BrokersFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.Errors.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.Errors"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Api/Radium.Api.Types.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Api.Types"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Api/Radium.Api.Client.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Api.Client"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Plans/Radium.Plans.Runner.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Plans.Runner"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.PlansFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.PlansFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.NewPlanWizard.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.NewPlanWizard"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.RiskFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.RiskFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Clerk/Radium.Clerk.Types.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Clerk.Types"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Clerk/Radium.Clerk.Analyzer.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Clerk.Analyzer"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.ClerkFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.ClerkFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.AiFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.AiFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.ChatFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.ChatFrame"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.StatusFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.StatusFrame"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -52,7 +153,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="../Source/Gui;../Source/Cid;../Source/Api;../Source/Types;$(MORMOT2)/src/core;$(MORMOT2)/src/lib;$(MORMOT2)/src/net;$(MORMOT2)/src/crypt;$(MORMOT2)/src/db;$(MORMOT2)/src/orm;$(MORMOT2)/src/rest;$(MORMOT2)/src/soa;$(MORMOT2)/src/app;$(MORMOT2)/src/misc"/>
+      <OtherUnitFiles Value="../Source/Gui;../Source/Cid;../Source/Api;../Source/Plans;../Source/Clerk;../Source/Sdk;../Source/Bots;../Source/Host;../Source/Types;$(MORMOT2)/src/core;$(MORMOT2)/src/lib;$(MORMOT2)/src/net;$(MORMOT2)/src/crypt;$(MORMOT2)/src/db;$(MORMOT2)/src/orm;$(MORMOT2)/src/rest;$(MORMOT2)/src/soa;$(MORMOT2)/src/app;$(MORMOT2)/src/misc"/>
       <UnitOutputDirectory Value="../Lib"/>
     </SearchPaths>
     <Parsing>
@@ -73,7 +174,8 @@
       </Debugging>
     </Linking>
     <Other>
-      <CustomOptions Value="-WM10.13"/>
+      <CustomOptions Value="-WM11.0
+-k-F/Library/Frameworks"/>
     </Other>
   </CompilerOptions>
 </CONFIG>

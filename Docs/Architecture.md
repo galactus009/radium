@@ -93,7 +93,10 @@ Bin/, Lib/   build artefacts (gitignored)
 
 ## Reuse references
 
-- `thoriumd/cmd/thoriumctl/main.go` — endpoint URLs and JSON shapes.
+- `Docs/ThoriumdContract.md` — **hardcoded** wire contract Radium pins
+  itself to. Read first before changing anything in `Source/Api/`.
+- `thoriumd/cmd/thoriumctl/main.go` — endpoint URLs and JSON shapes;
+  the contract above is derived from this and `thoriumd/server/`.
 - `thoriumd/cmd/clerk/main.go` — report logic; we shell out, don't
   port.
 - `Thorium/openalgo` (when relevant) — broker-side wire formats; not

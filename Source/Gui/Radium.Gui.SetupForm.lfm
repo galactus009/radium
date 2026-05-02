@@ -1,0 +1,146 @@
+object SetupForm: TSetupForm
+  Left = 200
+  Top = 200
+  Width = 560
+  Height = 520
+  BorderIcons = [biSystemMenu]
+  BorderStyle = bsDialog
+  Caption = 'Welcome to Radium'
+  Position = poScreenCenter
+  LCLVersion = '3.0.0.0'
+  OnCreate = FormCreate
+  OnCloseQuery = FormCloseQuery
+  object Card: TPanel
+    Left = 0
+    Top = 0
+    Width = 560
+    Height = 520
+    Align = alClient
+    BevelOuter = bvNone
+    Caption = ''
+    TabOrder = 0
+    object LblBrand: TLabel
+      Left = 48
+      Top = 36
+      Width = 100
+      Height = 22
+      Caption = 'RADIUM'
+      Font.Height = -18
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblTitle: TLabel
+      Left = 48
+      Top = 76
+      Width = 464
+      Height = 30
+      Caption = 'Connect to thoriumd'
+      Font.Height = -22
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblSubtitle: TLabel
+      Left = 48
+      Top = 116
+      Width = 464
+      Height = 56
+      Caption = 'Radium is a desktop console for thoriumd, the trading daemon. Tell it where thoriumd lives and which API key to use.'
+      Font.Height = -13
+      ParentColor = True
+      ParentFont = False
+      WordWrap = True
+    end
+    object LblHost: TLabel
+      Left = 48
+      Top = 196
+      Width = 100
+      Height = 18
+      Caption = 'Host URL'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object EdtHost: TEdit
+      Left = 48
+      Top = 218
+      Width = 464
+      Height = 28
+      TabOrder = 0
+      Text = 'http://localhost:8080'
+    end
+    object LblHostHint: TLabel
+      Left = 48
+      Top = 250
+      Width = 464
+      Height = 16
+      Caption = 'Where thoriumd listens. Leave the default if you started thoriumd locally.'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblApiKey: TLabel
+      Left = 48
+      Top = 290
+      Width = 100
+      Height = 18
+      Caption = 'API Key'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object EdtApiKey: TEdit
+      Left = 48
+      Top = 312
+      Width = 464
+      Height = 28
+      EchoMode = emPassword
+      TabOrder = 1
+      Text = ''
+    end
+    object LblApiKeyHint: TLabel
+      Left = 48
+      Top = 344
+      Width = 464
+      Height = 32
+      Caption = 'Whatever you set THORIUM_APIKEY to when starting thoriumd. Stored locally in your user config (mode 0600).'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+      WordWrap = True
+    end
+    object LblSpacer: TLabel
+      Left = 48
+      Top = 392
+      Width = 464
+      Height = 1
+      Caption = ''
+      ParentColor = True
+    end
+    object BtnSave: TButton
+      Left = 348
+      Top = 444
+      Width = 164
+      Height = 36
+      Caption = 'Save and continue'
+      Default = True
+      Font.Style = [fsBold]
+      ParentFont = False
+      OnClick = BtnSaveClick
+      TabOrder = 2
+    end
+    object BtnCancel: TButton
+      Left = 240
+      Top = 444
+      Width = 100
+      Height = 36
+      Caption = 'Cancel'
+      OnClick = BtnCancelClick
+      TabOrder = 3
+      Visible = False
+    end
+  end
+end

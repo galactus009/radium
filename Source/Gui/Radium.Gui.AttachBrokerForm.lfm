@@ -1,0 +1,217 @@
+object AttachBrokerForm: TAttachBrokerForm
+  Left = 200
+  Top = 200
+  Width = 600
+  Height = 660
+  BorderIcons = [biSystemMenu]
+  BorderStyle = bsDialog
+  Caption = 'Attach a broker'
+  Position = poScreenCenter
+  LCLVersion = '3.0.0.0'
+  OnCreate = FormCreate
+  object Card: TPanel
+    Left = 0
+    Top = 0
+    Width = 600
+    Height = 660
+    Align = alClient
+    BevelOuter = bvNone
+    Caption = ''
+    TabOrder = 0
+    object LblTitle: TLabel
+      Left = 40
+      Top = 32
+      Width = 520
+      Height = 30
+      Caption = 'Attach a broker'
+      Font.Height = -22
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblSubtitle: TLabel
+      Left = 40
+      Top = 70
+      Width = 520
+      Height = 56
+      Caption = 'thoriumd will hold the broker session and route market data + orders. You can attach more than one - each gets its own instance ID.'
+      Font.Height = -13
+      ParentColor = True
+      ParentFont = False
+      WordWrap = True
+    end
+    object LblBroker: TLabel
+      Left = 40
+      Top = 142
+      Width = 100
+      Height = 18
+      Caption = 'Broker'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object CmbBroker: TComboBox
+      Left = 40
+      Top = 164
+      Width = 240
+      Height = 28
+      ItemHeight = 0
+      Style = csDropDownList
+      TabOrder = 0
+    end
+    object LblInstance: TLabel
+      Left = 40
+      Top = 206
+      Width = 200
+      Height = 18
+      Caption = 'Instance ID  (optional)'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object EdtInstance: TEdit
+      Left = 40
+      Top = 228
+      Width = 240
+      Height = 28
+      TabOrder = 1
+      TextHint = 'default = broker name'
+    end
+    object LblInstanceHint: TLabel
+      Left = 40
+      Top = 260
+      Width = 520
+      Height = 14
+      Caption = 'Pick a unique tag for this session if you plan to attach more than one of the same broker.'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblClientId: TLabel
+      Left = 40
+      Top = 292
+      Width = 100
+      Height = 18
+      Caption = 'Client ID'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object EdtClientId: TEdit
+      Left = 40
+      Top = 314
+      Width = 520
+      Height = 28
+      TabOrder = 2
+    end
+    object LblClientIdHint: TLabel
+      Left = 40
+      Top = 346
+      Width = 520
+      Height = 14
+      Caption = 'Fyers: APP_ID. Other brokers: equivalent account identifier.'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblAccessToken: TLabel
+      Left = 40
+      Top = 378
+      Width = 200
+      Height = 18
+      Caption = 'Access Token'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object EdtAccessToken: TEdit
+      Left = 40
+      Top = 400
+      Width = 520
+      Height = 28
+      EchoMode = emPassword
+      TabOrder = 3
+    end
+    object LblTokenHint: TLabel
+      Left = 40
+      Top = 432
+      Width = 520
+      Height = 14
+      Caption = 'Fyers: JWT from the broker login flow. The token is sent over HTTPS to thoriumd, never stored on disk.'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+    end
+    object LblRole: TLabel
+      Left = 40
+      Top = 466
+      Width = 100
+      Height = 18
+      Caption = 'Role'
+      Font.Height = -13
+      Font.Style = [fsBold]
+      ParentColor = True
+      ParentFont = False
+    end
+    object RbRoleAuto: TRadioButton
+      Left = 40
+      Top = 488
+      Width = 520
+      Height = 22
+      Caption = 'Auto  -  let thoriumd decide (recommended for first session)'
+      TabOrder = 4
+    end
+    object RbRoleFeed: TRadioButton
+      Left = 40
+      Top = 510
+      Width = 520
+      Height = 22
+      Caption = 'Data + REST  -  this broker provides the live market feed'
+      TabOrder = 5
+    end
+    object RbRoleRest: TRadioButton
+      Left = 40
+      Top = 532
+      Width = 520
+      Height = 22
+      Caption = 'REST only  -  orders only; market data comes from another session'
+      TabOrder = 6
+    end
+    object LblRoleHint: TLabel
+      Left = 40
+      Top = 558
+      Width = 520
+      Height = 28
+      Caption = 'Only one attached broker can be the feed at a time. Picking Data + REST here will demote any current feed broker.'
+      Font.Height = -11
+      ParentColor = True
+      ParentFont = False
+      WordWrap = True
+    end
+    object BtnAttach: TButton
+      Left = 432
+      Top = 604
+      Width = 128
+      Height = 36
+      Caption = 'Attach'
+      Default = True
+      Font.Style = [fsBold]
+      ParentFont = False
+      OnClick = BtnAttachClick
+      TabOrder = 7
+    end
+    object BtnCancel: TButton
+      Left = 320
+      Top = 604
+      Width = 100
+      Height = 36
+      Caption = 'Cancel'
+      OnClick = BtnCancelClick
+      TabOrder = 8
+    end
+  end
+end

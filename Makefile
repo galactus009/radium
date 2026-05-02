@@ -63,7 +63,11 @@ tests:
 	MORMOT2=$(MORMOT2) $(LAZBUILD) $(TESTS_LPI)
 
 run: app
+ifeq ($(UNAME_S),Darwin)
+	open $(BIN)/Radium.app
+else
 	$(BIN)/Radium
+endif
 
 run-tests: tests
 	$(BIN)/RadiumTests
