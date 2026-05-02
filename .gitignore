@@ -1,0 +1,27 @@
+# Build outputs
+Bin/
+Lib/
+*.compiled
+*.o
+*.ppu
+*.rsj
+*.rst
+*.res
+*.app/
+
+# Lazarus session files (per-developer, not committed)
+*.lps
+
+# macOS junk
+.DS_Store
+
+# Editor backups
+*~
+*.bak
+
+# IDE state
+.vscode/
+.idea/
+
+# Generated Documentation
+Docs/_build/

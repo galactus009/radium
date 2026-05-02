@@ -1,0 +1,8 @@
+object MainForm: TMainForm
+  Left = 100
+  Top = 100
+  Width = 1024
+  Height = 720
+  Caption = 'Radium'
+  LCLVersion = '3.0.0.0'
+end
