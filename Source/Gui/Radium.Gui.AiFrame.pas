@@ -501,6 +501,25 @@ procedure TAiFrame.RenderCurrent(const ASnap: TAiConfigSnapshot);
   begin
     if AVal = '' then result := '-' else result := string(AVal);
   end;
+
+  // Compact "18234" → "18.2k", "1042" → "1.0k", "523" → "523". Keeps
+  // the value column readable at a glance while the operator scans for
+  // anomalies; the raw counts are still in the JSON if they need exact
+  // numbers.
+  function Compact(AN: Int64): string;
+  begin
+    if AN >= 1000000 then
+      result := FormatFloat('0.0M', AN / 1000000)
+    else if AN >= 1000 then
+      result := FormatFloat('0.0k', AN / 1000)
+    else
+      result := IntToStr(AN);
+  end;
+
+const
+  BASE_ROWS = 5; // header + Provider/Model/Base URL/API key
+var
+  i: Integer;
 begin
   FCurrentGrid.Cells[1, 1] := Dash(ASnap.Provider);
   FCurrentGrid.Cells[1, 2] := Dash(ASnap.Model);
@@ -509,6 +528,30 @@ begin
     FCurrentGrid.Cells[1, 4] := 'set'
   else
     FCurrentGrid.Cells[1, 4] := 'not set  -  configure below to set one';
+
+  // Per-(provider,model) usage since thoriumd boot. One row per
+  // bucket. Empty when the daemon hasn't seen any /ai/ask traffic
+  // yet (or is too old to report `usage`).
+  if Length(ASnap.Usage) = 0 then
+  begin
+    FCurrentGrid.RowCount := BASE_ROWS + 1;
+    FCurrentGrid.Cells[0, BASE_ROWS] := 'Usage (since boot)';
+    FCurrentGrid.Cells[1, BASE_ROWS] := '-';
+  end
+  else
+  begin
+    FCurrentGrid.RowCount := BASE_ROWS + Length(ASnap.Usage);
+    for i := 0 to High(ASnap.Usage) do
+    begin
+      FCurrentGrid.Cells[0, BASE_ROWS + i] :=
+        'Usage  ' + string(ASnap.Usage[i].Key);
+      FCurrentGrid.Cells[1, BASE_ROWS + i] := Format(
+        '%s calls  -  %s in / %s out tokens (since boot)',
+        [Compact(ASnap.Usage[i].Calls),
+         Compact(ASnap.Usage[i].InputTokens),
+         Compact(ASnap.Usage[i].OutputTokens)]);
+    end;
+  end;
 end;
 
 procedure TAiFrame.FillEditorsFromSnapshot(const ASnap: TAiConfigSnapshot);

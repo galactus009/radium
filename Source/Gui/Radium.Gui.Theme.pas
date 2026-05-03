@@ -32,9 +32,10 @@ uses
   Controls;
 
 type
-  // Match Docs/LookAndFeel.md §1. Both Light and Dark resolve every
-  // token; missing entries would mean a relationship the doc didn't
-  // calibrate, which we never want to ship.
+  // Match Docs/LookAndFeel.md §1. Two themes ship today (light +
+  // dark); operator toggles via the sidebar's Theme button. Each
+  // palette resolves every token; a missing entry would mean a
+  // relationship the doc didn't calibrate.
   TThemeKind = (tkLight, tkDark);
 
   TPaletteToken = (
@@ -59,8 +60,8 @@ type
 function ActiveTheme: TThemeKind;
 procedure SetActiveTheme(AKind: TThemeKind);
 
-// TColor lookup for the currently active theme. Use this — never
-// embed hex in calling code.
+// TColor lookup for the active palette. Use this — never embed hex
+// in calling code.
 function Token(AToken: TPaletteToken): TColor;
 
 // Token mapped from a semantic kind. Background colours stay canonical
@@ -74,9 +75,8 @@ function SemanticForeground(AKind: TSemanticKind): TColor;
 // when the active theme flips.
 procedure SetSemantic(AControl: TControl; AKind: TSemanticKind);
 
-// Stamp the palette onto the control and recurse. Idempotent — call
-// again after SetActiveTheme to reskin live. Preserves any prior
-// SetSemantic tagging on each control.
+// Stamp the palette onto the control and recurse. Idempotent.
+// Preserves any prior SetSemantic tagging on each control.
 procedure Apply(ARoot: TWinControl);
 
 implementation
@@ -96,11 +96,9 @@ uses
 // CSS hex (RRGGBB) with bytes reversed. Source of truth for the CSS
 // hex side: Docs/LookAndFeel.md §1.
 //
-// Palette is Linear/Vercel/Cursor-inspired: warm neutrals (no slate
-// blue tint), three clearly separable elevation steps, a single
-// indigo accent. Earlier slate-blue dark theme had the bug that
-// borderSubtle == bgElevated, so card edges literally vanished —
-// fixed here by spacing borders one step lighter than elevated.
+// Linear/Vercel/Cursor-inspired palettes — light is the default,
+// dark is the after-hours alternative. Mirrors the Qt palette set
+// in Radium.Gui.QtFusion.ApplyFusionTheme.
 
 const
   LightPalette: array[TPaletteToken] of TColor = (

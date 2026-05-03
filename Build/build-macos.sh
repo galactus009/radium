@@ -67,6 +67,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Radium" "$APP/Contents/MacOS/Radium"
 
+# Copy bundled assets (icon font, etc.) into the bundle's Resources
+# directory so Radium.Gui.Icons can find them at runtime via the
+# <bundle>/Contents/Resources/<...> lookup path. Optional — if the
+# assets folder is missing the app still runs (just without icons).
+if [ -d "$ROOT/Resources" ]; then
+  cp -R "$ROOT/Resources/." "$APP/Contents/Resources/"
+fi
+
 # Minimum-viable Info.plist. Without LSMinimumSystemVersion +
 # CFBundlePackageType=APPL the Qt6 macOS platform plugin will not
 # install the native menu bar — the menu items end up in a TWindow
@@ -86,6 +94,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleSignature</key>             <string>????</string>
     <key>CFBundleShortVersionString</key>    <string>0.1.0</string>
     <key>CFBundleVersion</key>               <string>1</string>
+    <key>CFBundleIconFile</key>              <string>Radium</string>
     <key>LSMinimumSystemVersion</key>        <string>11.0</string>
     <key>LSApplicationCategoryType</key>     <string>public.app-category.finance</string>
     <key>NSHighResolutionCapable</key>       <true/>
@@ -93,5 +102,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# CFBundleIconFile resolves to <Contents/Resources/Radium.icns> — Finder
+# expects it at the Resources root, not inside a subfolder. Copy it
+# there alongside the staged Resources/Icons/ tree (which the lookup
+# in Radium.Gui.Icons doesn't need but is harmless to keep).
+if [ -f "$ROOT/Resources/Icons/Radium.icns" ]; then
+  cp "$ROOT/Resources/Icons/Radium.icns" "$APP/Contents/Resources/Radium.icns"
+fi
 
 echo "[radium] built $APP"

@@ -129,6 +129,12 @@ type
     FEdtTPPct:          TEdit;
     FEdtTrailTrigger:   TEdit;
     FEdtTrailGiveBack:  TEdit;
+    // options-only — picks the decision source. Quant is the
+    // deterministic in-process advisor (zero token cost); LLM is the
+    // legacy /ai/ask path. See bot/optionsbuddy/config.go::ParamAdvisor.
+    FLblOptionsHeader:  TLabel;
+    FCmbAdvisor:        TComboBox;
+    FLblAdvisorHint:    TLabel;
     // gamma-only
     FLblGammaHeader:    TLabel;
     FCmbGammaMode:      TComboBox;
@@ -218,6 +224,18 @@ const
 type
   TStrArr = array of string;
 
+  // TPlanSymSpec — one parsed entry from the Markets textbox. The
+  // wizard now accepts a `SYMBOL:EXCHANGE` per-row syntax so a single
+  // plan can mix index options (NIFTY:NSE_INDEX) with equity options
+  // (RELIANCE:NSE) and they each get the right underlying-exchange
+  // tag. Exchange stays '' when the operator types just `NIFTY` —
+  // the wizard fills it from the default-exchange dropdown.
+  TPlanSymSpec = record
+    Symbol:   string;
+    Exchange: string;
+  end;
+  TPlanSymSpecArr = array of TPlanSymSpec;
+
 // ── tiny helpers ────────────────────────────────────────────────────
 
 // SafeStrToInt — returns ADefault when AText doesn't parse. Used
@@ -275,6 +293,48 @@ begin
       buf := buf + AText[i];
     end;
   Flush;
+end;
+
+// ParseSymSpecs — splits the Markets textbox into per-symbol
+// (Symbol, Exchange) pairs. The colon between SYMBOL and EXCHANGE is
+// what differentiates this from ParseUnderlyings — operators can
+// freely mix:
+//
+//   NIFTY                   → Symbol=NIFTY,    Exchange=''
+//   NIFTY:NSE_INDEX         → Symbol=NIFTY,    Exchange=NSE_INDEX
+//   RELIANCE:NSE,TCS:NSE    → two equity-options underlyings
+//   NIFTY:NSE_INDEX,RELIANCE:NSE  → mixed index + equity in one plan
+//
+// Empty Exchange means "use the default-exchange dropdown's value".
+// Both halves are uppercased on output so downstream code never has
+// to case-fold.
+function ParseSymSpecs(const AText: string): TPlanSymSpecArr;
+var
+  raw: TStrArr;
+  i, colonAt: Integer;
+  cur: string;
+  spec: TPlanSymSpec;
+begin
+  result := nil;
+  raw := ParseUnderlyings(AText);
+  for i := 0 to High(raw) do
+  begin
+    cur := raw[i];
+    colonAt := Pos(':', cur);
+    if colonAt > 0 then
+    begin
+      spec.Symbol   := UpperCase(Trim(Copy(cur, 1, colonAt - 1)));
+      spec.Exchange := UpperCase(Trim(Copy(cur, colonAt + 1, MaxInt)));
+    end
+    else
+    begin
+      spec.Symbol   := UpperCase(Trim(cur));
+      spec.Exchange := '';
+    end;
+    if spec.Symbol = '' then continue;
+    SetLength(result, Length(result) + 1);
+    result[High(result)] := spec;
+  end;
 end;
 
 // ValidIstHHMM — '14:45' → true; '1445' / '14h45' → false. Helper text
@@ -657,10 +717,12 @@ begin
 
   MakeFieldLabel(panel, 'Underlyings', 16, 44);
   FEdtUnderlyings := MakeFieldEdit(panel, 16, 64, WIZARD_WIDTH - 80,
-    'NIFTY, BANKNIFTY');
+    'NIFTY:NSE_INDEX, BANKNIFTY:NSE_INDEX, RELIANCE:NSE');
   MakeHelperText(panel,
-    'Comma-separated. The bot manages each underlying as its own basket. ' +
-    'Index names work today; equity tickers when the engine grows there.',
+    'Comma-separated. SYMBOL:EXCHANGE per item — index options use ' +
+    'NSE_INDEX (e.g. NIFTY:NSE_INDEX, BANKNIFTY:NSE_INDEX, SENSEX:BSE_INDEX); ' +
+    'equity options use NSE (e.g. RELIANCE:NSE, TCS:NSE). Bare SYMBOL ' +
+    'inherits the default-exchange dropdown below. Mix freely.',
     16, 96, WIZARD_WIDTH - 80);
 
   MakeFieldLabel(panel, 'Lots per leg', 16, 150);
@@ -676,10 +738,11 @@ begin
   FCmbProduct.Items.Add('NRML (carry)');
   FCmbProduct.ItemIndex := 0;
 
-  MakeFieldLabel(panel, 'Underlying exchange', 16, 250);
+  MakeFieldLabel(panel, 'Default exchange', 16, 250);
   FCmbUndExchange := MakeFieldCombo(panel, 16, 270, 200);
-  FCmbUndExchange.Items.Add('NSE_INDEX');
-  FCmbUndExchange.Items.Add('NSE');
+  FCmbUndExchange.Items.Add('NSE_INDEX');     // index options
+  FCmbUndExchange.Items.Add('NSE');           // equity options
+  FCmbUndExchange.Items.Add('BSE_INDEX');     // SENSEX
   FCmbUndExchange.Items.Add('BSE');
   FCmbUndExchange.ItemIndex := 0;
 
@@ -848,8 +911,29 @@ begin
     'from the high.',
     16, 90, WIZARD_WIDTH - 80);
 
+  // ── options.scalper-only — advisor selection ────────────────
+  // Quant is the in-process deterministic advisor: 3-axis regime
+  // classifier + strategy lookup table, no LLM, no token cost. LLM
+  // is the legacy /ai/ask path that bills against whatever provider
+  // /admin/ai/configure points at. Default to Quant for new plans —
+  // the operator who wants the LLM brain back can pick it explicitly.
+  FLblOptionsHeader := MakeSectionHeader(panel, 'Decision source', 130);
+
+  MakeFieldLabel(panel, 'Advisor', 16, 158);
+  FCmbAdvisor := MakeFieldCombo(panel, 16, 178, 280);
+  FCmbAdvisor.Items.Add('Quant — deterministic (no LLM cost)');
+  FCmbAdvisor.Items.Add('LLM — call /ai/ask each tick');
+  FCmbAdvisor.ItemIndex := 0;  // default = quant
+
+  FLblAdvisorHint := MakeHelperText(panel,
+    'Quant is fully deterministic: same market snapshot → same strategy pick, ' +
+    'sub-millisecond latency, $0/run. LLM is the legacy path; useful for ' +
+    'comparison runs and post-trade analysis but has burned through token ' +
+    'budgets unsupervised. Both honour the same SL/TP/trail values above.',
+    16, 210, WIZARD_WIDTH - 80);
+
   // ── gamma-only knobs ────────────────────────────────────────
-  optTop := 140;
+  optTop := 280;
 
   FLblGammaHeader := MakeSectionHeader(panel, 'Gamma rules', optTop);
 
@@ -967,6 +1051,11 @@ begin
   if FEdtVIXSell <> nil    then FEdtVIXSell.Visible    := isGamma;
   if FEdtVIXBuy <> nil     then FEdtVIXBuy.Visible     := isGamma;
   if FChkExpiryOnly <> nil then FChkExpiryOnly.Visible := isGamma;
+  // Options.scalper-only — advisor selector. Gamma has its own
+  // deterministic decision source baked in, so the choice is moot.
+  if FLblOptionsHeader <> nil then FLblOptionsHeader.Visible := not isGamma;
+  if FCmbAdvisor <> nil      then FCmbAdvisor.Visible      := not isGamma;
+  if FLblAdvisorHint <> nil  then FLblAdvisorHint.Visible  := not isGamma;
 end;
 
 procedure TNewPlanWizard.ShowStep(AIndex: Integer);
@@ -1106,9 +1195,8 @@ begin
       end;
     2:
       begin
-        unders := ParseUnderlyings(FEdtUnderlyings.Text);
-        if Length(unders) = 0 then
-          AMsg := 'Enter at least one underlying (e.g. NIFTY).'
+        if Length(ParseSymSpecs(FEdtUnderlyings.Text)) = 0 then
+          AMsg := 'Enter at least one underlying — SYMBOL or SYMBOL:EXCHANGE.'
         else if SafeStrToInt(FEdtLots.Text, 0) < 1 then
           AMsg := 'Lots per leg must be 1 or more.';
       end;
@@ -1206,6 +1294,7 @@ end;
 procedure TNewPlanWizard.BuildResult;
 var
   unders: TStrArr;
+  specs:  TPlanSymSpecArr;
   i: Integer;
   ses: TStatusSession;
   premium, sl, tp, trailT, trailG, vixSell, vixBuy: Double;
@@ -1264,19 +1353,25 @@ begin
   FResult.Broker     := ses.Broker;
   FResult.Capability := CurrentCapability;
 
-  unders := ParseUnderlyings(FEdtUnderlyings.Text);
+  specs := ParseSymSpecs(FEdtUnderlyings.Text);
   productWire := ProductWireFromCombo;
   undExch := RawUtf8(FCmbUndExchange.Text);
 
-  SetLength(FResult.Instruments, Length(unders));
-  for i := 0 to High(unders) do
+  SetLength(FResult.Instruments, Length(specs));
+  for i := 0 to High(specs) do
   begin
     FResult.Instruments[i].InstrumentType := 'options_underlying';
-    FResult.Instruments[i].Symbol         := RawUtf8(unders[i]);
-    FResult.Instruments[i].Exchange       := undExch;
-    FResult.Instruments[i].Lots           := SafeStrToInt(FEdtLots.Text, 1);
-    FResult.Instruments[i].Qty            := 0;
-    FResult.Instruments[i].Product        := productWire;
+    FResult.Instruments[i].Symbol         := RawUtf8(specs[i].Symbol);
+    // Per-symbol exchange override; bare symbols inherit the
+    // default-exchange dropdown (NSE_INDEX for the most-common
+    // index-options flow).
+    if specs[i].Exchange <> '' then
+      FResult.Instruments[i].Exchange := RawUtf8(specs[i].Exchange)
+    else
+      FResult.Instruments[i].Exchange := undExch;
+    FResult.Instruments[i].Lots    := SafeStrToInt(FEdtLots.Text, 1);
+    FResult.Instruments[i].Qty     := 0;
+    FResult.Instruments[i].Product := productWire;
   end;
 
   // ── risk caps ────────────────────────────────────────────────
@@ -1336,7 +1431,19 @@ begin
   if trailG > 0 then AddFloatParam('trail_give_back_pct', trailG);
 
   // Capability-specific knobs.
-  if CurrentCapability = pcGammaScalper then
+  if CurrentCapability = pcOptionsScalper then
+  begin
+    // Always emit `advisor` explicitly so a future change to the
+    // bot-side default doesn't silently flip an existing plan's
+    // decision source on restart. Maps the combo index to the wire
+    // values bot/optionsbuddy/config.go::ParamAdvisor accepts.
+    case FCmbAdvisor.ItemIndex of
+      1: AddStrParam('advisor', 'llm');
+    else
+      AddStrParam('advisor', 'quant');
+    end;
+  end
+  else if CurrentCapability = pcGammaScalper then
   begin
     case FCmbGammaMode.ItemIndex of
       1: AddBoolParam('gamma_allow_buy', False);  // sell-only
@@ -1374,7 +1481,8 @@ function TNewPlanWizard.BuildReviewText: string;
 var
   cap: TPlanCapability;
   cat: TPlanCapabilityInfoArray;
-  unders: TStrArr;
+  specs: TPlanSymSpecArr;
+  defaultExch: string;
   ses: TStatusSession;
   i: Integer;
   symbolList, riskLine, windowLine, tuningLine, advLine: string;
@@ -1384,12 +1492,20 @@ begin
   cap := CurrentCapability;
   cat := PlanCapabilityCatalog;
   ses := SelectedSession;
-  unders := ParseUnderlyings(FEdtUnderlyings.Text);
+  specs := ParseSymSpecs(FEdtUnderlyings.Text);
+  defaultExch := FCmbUndExchange.Text;
 
+  // Show each instrument as SYMBOL:EXCHANGE so the operator can verify
+  // before clicking Create. Bare symbols pick up the default-exchange
+  // dropdown so the review reflects what the wire body will actually
+  // carry, not the operator's shorthand.
   symbolList := '';
-  for i := 0 to High(unders) do
+  for i := 0 to High(specs) do
   begin
-    symbol := unders[i];
+    if specs[i].Exchange <> '' then
+      symbol := specs[i].Symbol + ':' + specs[i].Exchange
+    else
+      symbol := specs[i].Symbol + ':' + defaultExch + '  (default)';
     if i = 0 then symbolList := symbol
     else symbolList := symbolList + ', ' + symbol;
   end;
@@ -1419,6 +1535,14 @@ begin
 
   tuningLine := 'Stop loss: ' + Trim(FEdtSLPct.Text) + '%   ' +
                 'Take profit: ' + Trim(FEdtTPPct.Text) + '%' + LineEnding;
+  if cap = pcOptionsScalper then
+  begin
+    case FCmbAdvisor.ItemIndex of
+      1: tuningLine := tuningLine + 'Advisor: LLM (calls /ai/ask, billed)' + LineEnding;
+    else
+      tuningLine := tuningLine + 'Advisor: Quant (deterministic, no LLM cost)' + LineEnding;
+    end;
+  end;
   if cap = pcGammaScalper then
   begin
     tuningLine := tuningLine + 'Gamma mode: ' + FCmbGammaMode.Items[FCmbGammaMode.ItemIndex] + LineEnding;

@@ -91,6 +91,20 @@ type
 
   // ── ai ──────────────────────────────────────────────────────────────
 
+  // TAiUsageBucket — per-(provider,model) call + token totals
+  // accumulated by thoriumd since process start. Reset on daemon
+  // restart. Surfaced by /admin/ai/config so the GUI can show the
+  // operator real-time burn instead of waiting for the provider's
+  // monthly invoice (added 2026-05-03 after the gpt-4o billing
+  // incident).
+  TAiUsageBucket = record
+    Key:          RawUtf8;   // "provider/model", e.g. "openai/gpt-5-nano"
+    Calls:        Int64;
+    InputTokens:  Int64;
+    OutputTokens: Int64;
+  end;
+  TAiUsageBucketArr = array of TAiUsageBucket;
+
   // TAiConfigSnapshot — the `data` block of /admin/ai/config (GET).
   // Fields beyond these survive in the raw JSON the show panel can
   // render verbatim.
@@ -99,6 +113,7 @@ type
     Model:    RawUtf8;
     BaseUrl:  RawUtf8;
     HasKey:   Boolean;
+    Usage:    TAiUsageBucketArr;
     Raw:      RawUtf8;
   end;
 

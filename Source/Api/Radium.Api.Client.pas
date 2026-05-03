@@ -161,6 +161,37 @@ type
     function SymbolLookup(const ASymbol, AExchange: RawUtf8;
       const AInstanceId: RawUtf8 = ''): RawUtf8;
 
+    // SymbolSearch — POST /api/v1/search. Free-text query over the
+    // attached broker's catalogue, returns up to ALimit instrument
+    // rows. AExchange is optional — pass '' to search every segment,
+    // or 'NSE' / 'NFO' / etc to filter. Used by the order-pad's
+    // autocomplete.
+    function SymbolSearch(const AQuery, AExchange: RawUtf8;
+      ALimit: Integer = 25; const AInstanceId: RawUtf8 = ''): TInstrumentArray;
+
+    // PlaceOrder — POST /api/v1/placeorder. Returns the broker's
+    // assigned orderid on success. Wire shape mirrors thoriumctl's
+    // placeorder command: action, pricetype, product, quantity,
+    // optional price + trigger.
+    function PlaceOrder(const ACid, ACidExchange, AAction, APriceType,
+                        AProduct: RawUtf8;
+                        AQuantity: Integer; APrice, ATrigger: Double;
+                        const AInstanceId: RawUtf8 = ''): RawUtf8;
+
+    // ClosePosition — POST /api/v1/closeposition. Server figures out
+    // direction + qty from the open positionbook entry and submits
+    // the offsetting order. Returns broker orderid on success.
+    function ClosePosition(const ACid, ACidExchange: RawUtf8;
+      const AInstanceId: RawUtf8 = ''): RawUtf8;
+
+    // FundsGet — GET /api/v1/funds. Returns the funds JSON envelope
+    // raw (caller picks fields it needs — total / utilised /
+    // available / payin / payout, names vary per broker).
+    function FundsGet(const AInstanceId: RawUtf8 = ''): RawUtf8;
+
+    // MarginGet — GET /api/v1/margin. Same shape rationale as funds.
+    function MarginGet(const AInstanceId: RawUtf8 = ''): RawUtf8;
+
     property BaseUrl: RawUtf8 read FBaseUrl write FBaseUrl;
     property ApiKey:  RawUtf8 read FApiKey  write FApiKey;
 
@@ -180,6 +211,7 @@ implementation
 
 uses
   sysutils,
+  variants,
   mormot.core.text,
   mormot.core.json,
   mormot.net.client;
@@ -250,7 +282,8 @@ end;
 
 function ParseAiData(const AData: variant; const ARaw: RawUtf8): TAiConfigSnapshot;
 var
-  d: PDocVariantData;
+  d, u, bucket: PDocVariantData;
+  i: PtrInt;
 begin
   d := _Safe(AData);
   result.Provider := d^.U['provider'];
@@ -258,6 +291,24 @@ begin
   result.BaseUrl  := d^.U['base_url'];
   result.HasKey   := d^.B['has_key'];
   result.Raw      := ARaw;
+
+  // usage is a JSON object keyed by "provider/model" → {calls,
+  // input_tokens, output_tokens}. Walk it into a flat array; missing
+  // (older daemons) is fine — Usage stays nil.
+  result.Usage := nil;
+  u := _Safe(d^.Value['usage']);
+  if u^.Kind = dvObject then
+  begin
+    SetLength(result.Usage, u^.Count);
+    for i := 0 to u^.Count - 1 do
+    begin
+      bucket := _Safe(u^.Values[i]);
+      result.Usage[i].Key          := u^.Names[i];
+      result.Usage[i].Calls        := bucket^.I['calls'];
+      result.Usage[i].InputTokens  := bucket^.I['input_tokens'];
+      result.Usage[i].OutputTokens := bucket^.I['output_tokens'];
+    end;
+  end;
 end;
 
 function ParseRiskData(const AData: variant): TRiskConfig;
@@ -896,6 +947,171 @@ begin
     response := HttpDo('POST', Url('/api/v1/symbol'),
                        bodyJson, 'application/json', http);
     data := EnvelopeData(response, http);
+    result := VariantSaveJson(data);
+  except
+    on EThoriumApi do
+      result := '';
+  end;
+end;
+
+function TThoriumClient.SymbolSearch(const AQuery, AExchange: RawUtf8;
+  ALimit: Integer; const AInstanceId: RawUtf8): TInstrumentArray;
+var
+  body, data, rows, row: variant;
+  bodyJson, response: RawUtf8;
+  http, i, n: Integer;
+  d: PDocVariantData;
+begin
+  SetLength(result, 0);
+  if Trim(string(AQuery)) = '' then exit;
+
+  body := _ObjFast([
+    'apikey', FApiKey,
+    'query',  AQuery,
+    'limit',  ALimit
+  ]);
+  if AExchange <> '' then
+    _Safe(body)^.AddValue('exchange', AExchange);
+  if AInstanceId <> '' then
+    _Safe(body)^.AddValue('instance_id', AInstanceId);
+
+  bodyJson := VariantSaveJson(body);
+  try
+    response := HttpDo('POST', Url('/api/v1/search'),
+                       bodyJson, 'application/json', http);
+  except
+    on EThoriumApi do exit;
+  end;
+  data := EnvelopeData(response, http);
+  d := _Safe(data);
+  // Server may return either {results:[...]} or a bare array under
+  // data — handle both shapes.
+  rows := d^.GetValueOrDefault('results', data);
+  if not VarIsArray(rows) then exit;
+  n := _Safe(rows)^.Count;
+  SetLength(result, n);
+  for i := 0 to n - 1 do
+  begin
+    row := _Safe(rows)^.Values[i];
+    result[i].BrokerKey      := _Safe(row)^.U['symbol'];
+    if result[i].BrokerKey = '' then
+      result[i].BrokerKey    := _Safe(row)^.U['broker_key'];
+    result[i].Token          := _Safe(row)^.U['token'];
+    result[i].TradingSymbol  := _Safe(row)^.U['trading_symbol'];
+    if result[i].TradingSymbol = '' then
+      result[i].TradingSymbol := _Safe(row)^.U['tradingsymbol'];
+    result[i].Name           := _Safe(row)^.U['name'];
+    result[i].Underlying     := _Safe(row)^.U['underlying'];
+    result[i].Exchange       := _Safe(row)^.U['exchange'];
+    result[i].InstrumentType := _Safe(row)^.U['instrumenttype'];
+    if result[i].InstrumentType = '' then
+      result[i].InstrumentType := _Safe(row)^.U['instrument_type'];
+    result[i].Expiry         := _Safe(row)^.U['expiry'];
+    result[i].Strike         := _Safe(row)^.D['strike'];
+    result[i].LotSize        := _Safe(row)^.I['lot_size'];
+    if result[i].LotSize = 0 then
+      result[i].LotSize      := _Safe(row)^.I['lotsize'];
+    result[i].TickSize       := _Safe(row)^.D['tick_size'];
+    result[i].Cid            := _Safe(row)^.U['cid'];
+    result[i].CidExchange    := _Safe(row)^.U['cid_exchange'];
+    if result[i].CidExchange = '' then
+      result[i].CidExchange  := _Safe(row)^.U['exchange'];
+  end;
+end;
+
+function TThoriumClient.PlaceOrder(const ACid, ACidExchange, AAction,
+  APriceType, AProduct: RawUtf8;
+  AQuantity: Integer; APrice, ATrigger: Double;
+  const AInstanceId: RawUtf8): RawUtf8;
+var
+  body, data: variant;
+  bodyJson, response: RawUtf8;
+  http: Integer;
+begin
+  body := _ObjFast([
+    'apikey',    FApiKey,
+    'symbol',    ACid,
+    'exchange',  ACidExchange,
+    'action',    AAction,
+    'pricetype', APriceType,
+    'product',   AProduct,
+    'quantity',  AQuantity
+  ]);
+  // LIMIT / SL want price; SL / SL-M want trigger. We always send
+  // both when non-zero; the server ignores irrelevant fields per
+  // pricetype.
+  if APrice > 0 then
+    _Safe(body)^.AddValue('price', APrice);
+  if ATrigger > 0 then
+    _Safe(body)^.AddValue('trigger_price', ATrigger);
+  if AInstanceId <> '' then
+    _Safe(body)^.AddValue('instance_id', AInstanceId);
+
+  bodyJson := VariantSaveJson(body);
+  response := HttpDo('POST', Url('/api/v1/placeorder'),
+                     bodyJson, 'application/json', http);
+  data := EnvelopeData(response, http);
+  result := _Safe(data)^.U['orderid'];
+  if result = '' then
+    result := _Safe(data)^.U['order_id'];
+end;
+
+function TThoriumClient.ClosePosition(const ACid, ACidExchange: RawUtf8;
+  const AInstanceId: RawUtf8): RawUtf8;
+var
+  body, data: variant;
+  bodyJson, response: RawUtf8;
+  http: Integer;
+begin
+  body := _ObjFast([
+    'apikey',   FApiKey,
+    'symbol',   ACid,
+    'exchange', ACidExchange
+  ]);
+  if AInstanceId <> '' then
+    _Safe(body)^.AddValue('instance_id', AInstanceId);
+  bodyJson := VariantSaveJson(body);
+  response := HttpDo('POST', Url('/api/v1/closeposition'),
+                     bodyJson, 'application/json', http);
+  data := EnvelopeData(response, http);
+  result := _Safe(data)^.U['orderid'];
+  if result = '' then
+    result := _Safe(data)^.U['order_id'];
+end;
+
+function TThoriumClient.FundsGet(const AInstanceId: RawUtf8): RawUtf8;
+var
+  http: Integer;
+  body: RawUtf8;
+  data: variant;
+  url:  RawUtf8;
+begin
+  url := UrlWithApiKey('/api/v1/funds');
+  if AInstanceId <> '' then
+    url := url + '&instance_id=' + AInstanceId;
+  try
+    body := HttpDo('GET', url, '', '', http);
+    data := EnvelopeData(body, http);
+    result := VariantSaveJson(data);
+  except
+    on EThoriumApi do
+      result := '';
+  end;
+end;
+
+function TThoriumClient.MarginGet(const AInstanceId: RawUtf8): RawUtf8;
+var
+  http: Integer;
+  body: RawUtf8;
+  data: variant;
+  url:  RawUtf8;
+begin
+  url := UrlWithApiKey('/api/v1/margin');
+  if AInstanceId <> '' then
+    url := url + '&instance_id=' + AInstanceId;
+  try
+    body := HttpDo('GET', url, '', '', http);
+    data := EnvelopeData(body, http);
     result := VariantSaveJson(data);
   except
     on EThoriumApi do

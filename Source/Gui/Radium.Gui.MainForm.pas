@@ -9,11 +9,11 @@ unit Radium.Gui.MainForm;
     | RADIUM         |                                  |
     | thoriumd       |  Welcome card (default)          |
     | console        |   - or -                         |
-    |                |  Sessions frame (when            |
-    | ▣ Broker Sess. |   "Broker Sessions" clicked)     |
-    | ▣ Status       |                                  |
+    |                |  Thorium Server frame (when      |
+    | ▣ ThoriumSrv   |   the nav button is clicked) —   |
+    | ▣ Trade        |   Status / Sessions / Risk tabs. |
     | ▣ Plans        |                                  |
-    | ▣ Risk         |                                  |
+    | ▣ Clerk        |                                  |
     | ▣ AI           |                                  |
     | (spring)       |                                  |
     | ▣ Settings     |                                  |
@@ -65,7 +65,13 @@ uses
   Radium.Gui.RiskFrame,
   Radium.Gui.ClerkFrame,
   Radium.Gui.AiFrame,
-  Radium.Gui.ChatFrame;
+  Radium.Gui.ChatFrame,
+  Radium.Gui.Icons,
+  Radium.Gui.NavButton,
+  Radium.Trading.Types,
+  Radium.Trading.Validator,
+  Radium.Gui.SymbolSearch,
+  Radium.Gui.TradeFrame;
 
 type
   TStatusSlot = (ssConnection, ssFeed, ssInstance, ssClock);
@@ -76,15 +82,8 @@ type
       SidebarTopGroup:  TPanel;
         BrandLabel:     TLabel;
         BrandTagline:   TLabel;
-        BtnBrokers:     TSpeedButton;
-        BtnPlans:       TSpeedButton;
-        BtnRisk:        TSpeedButton;
-        BtnClerk:       TSpeedButton;
-        BtnAi:          TSpeedButton;
       SidebarSpring:    TPanel;
       SidebarBotGroup:  TPanel;
-        BtnSettings:    TSpeedButton;
-        BtnTheme:       TSpeedButton;
     SidebarDivider:     TBevel;
     CenterHost:         TPanel;
       WelcomeCard:      TPanel;
@@ -100,25 +99,30 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure ClockTimerTimer(Sender: TObject);
 
-    procedure BtnBrokersClick(Sender: TObject);
-    procedure BtnPlansClick(Sender: TObject);
-    procedure BtnRiskClick(Sender: TObject);
-    procedure BtnClerkClick(Sender: TObject);
-    procedure BtnAiClick(Sender: TObject);
-    procedure BtnSettingsClick(Sender: TObject);
-    procedure BtnThemeClick(Sender: TObject);
-
   private
     FClient:         TThoriumClient;
     FPlanRunner:     TPlanRunner;
     FBrokersFrame:   TBrokersFrame;
     FPlansFrame:     TPlansFrame;
-    FRiskFrame:      TRiskFrame;
     FClerkFrame:     TClerkFrame;
     FAiFrame:        TAiFrame;
+    FTradeFrame:     TTradeFrame;
     FHeartbeatTimer: TTimer;
     FStatusTimer:    TTimer;
     FCachedSessions: TStatusSessionArray;
+
+    // Nav buttons — built programmatically in BuildSidebar so we can
+    // host an icon font + caption in a compound widget. The toggle
+    // collapses captions and shrinks the host width.
+    FNavToggle:      TNavButton;
+    FNavBrokers:     TNavButton;
+    FNavTrade:       TNavButton;
+    FNavPlans:       TNavButton;
+    FNavClerk:       TNavButton;
+    FNavAi:          TNavButton;
+    FNavTheme:       TNavButton;
+    FNavSettings:    TNavButton;
+    FNavCollapsed:   Boolean;
 
     procedure SetStatus(ASlot: TStatusSlot; const AText: string);
     procedure ApplyActiveTheme;
@@ -127,9 +131,22 @@ type
     procedure EnsureClient;
     function  HostForError: string;
 
-    procedure ShowBrokersFrame(AStatusTab: Boolean);
+    procedure BuildSidebar;
+    procedure ApplyNavState;
+    procedure SetActiveNav(AActive: TNavButton);
+    procedure NavToggleClicked(Sender: TObject);
+    procedure NavBrokersClicked(Sender: TObject);
+    procedure NavTradeClicked(Sender: TObject);
+    procedure NavPlansClicked(Sender: TObject);
+    procedure NavClerkClicked(Sender: TObject);
+    procedure NavAiClicked(Sender: TObject);
+    procedure NavThemeClicked(Sender: TObject);
+    procedure NavSettingsClicked(Sender: TObject);
+    procedure RefreshThemeButton;
+
+    procedure ShowBrokersFrame;
+    procedure ShowTradeFrame;
     procedure ShowPlansFrame;
-    procedure ShowRiskFrame;
     procedure ShowClerkFrame;
     procedure ShowAiFrame;
     procedure HideAllFrames;
@@ -138,6 +155,7 @@ type
     procedure RefreshBrokers;
     procedure StatusReload(Sender: TObject);
     procedure StatusAutoToggle(Sender: TObject);
+    procedure BrokersTabChanged(Sender: TObject);
     procedure RefreshPlans;
     procedure RefreshRisk;
     procedure UpdateConnectionStatusBar;
@@ -170,6 +188,18 @@ type
     procedure ChatAsk(Sender: TObject; const ARequest: TChatAskRequest);
 
     procedure RefreshAi;
+
+    // Trade panel — host-side wiring for the order pad.
+    procedure RefreshTrade;
+    procedure TradeSymbolSearch(Sender: TObject; const AQuery: RawUtf8;
+      out AResults: TInstrumentArray);
+    procedure TradePlaceRequested(Sender: TObject;
+      const APlanned: TPlannedOrder);
+    procedure TradeAddRequested(Sender: TObject;
+      const ARow: TPositionRow);
+    procedure TradeExitRequested(Sender: TObject;
+      const ARow: TPositionRow);
+    procedure TradeRefreshClicked(Sender: TObject);
   public
   end;
 
@@ -181,6 +211,7 @@ implementation
 uses
   mormot.net.client,
   Radium.Gui.Theme,
+  Radium.Gui.QtFusion,
   Radium.Settings,
   Radium.Gui.SetupForm,
   Radium.Gui.AttachBrokerForm,
@@ -200,20 +231,21 @@ begin
   SetStatus(ssInstance,   'instance: -');
   SetStatus(ssClock,      FormatDateTime('hh:nn', Now) + ' IST');
 
-  SetSemantic(BrandLabel,    skPrimary);
-  SetSemantic(BrandTagline,  skMuted);
-  SetSemantic(BtnBrokers,    skPrimary);
-  SetSemantic(BtnPlans,      skNeutral);
-  SetSemantic(BtnRisk,       skNeutral);
-  SetSemantic(BtnAi,         skNeutral);
-  SetSemantic(BtnSettings,   skNeutral);
-  SetSemantic(BtnTheme,      skMuted);
-  SetSemantic(WelcomeTitle,  skPrimary);
-  SetSemantic(WelcomeBody,   skNeutral);
-  SetSemantic(DocsHint,      skMuted);
+  SetSemantic(BrandLabel,     skPrimary);
+  SetSemantic(BrandTagline,   skMuted);
+  SetSemantic(WelcomeTitle,   skPrimary);
+  SetSemantic(WelcomeBody,    skNeutral);
+  SetSemantic(DocsHint,       skMuted);
   SetSemantic(StatusDotLabel, skMuted);
 
+  // Build nav AFTER semantic tagging on the LFM children but before
+  // theme apply, so the nav-button sub-controls can pick up the
+  // surface bg in the same Apply walk.
+  BuildSidebar;
   ApplyActiveTheme;
+  ApplyNavState;
+  RefreshThemeButton;
+  SetActiveNav(FNavBrokers);
 
   // Heartbeat — pings thoriumd every 15s and paints the status dot
   // green / red accordingly. Built programmatically (not in the LFM)
@@ -250,13 +282,13 @@ end;
 
 procedure TMainForm.ApplyActiveTheme;
 begin
+  // Dark-only since the Fusion+QPalette switch (Radium.Gui.QtFusion).
+  // Apply still runs because LCL TPanel + TForm read .Color directly,
+  // and the sidebar gets a non-canonical surface bg via Theme.Apply's
+  // by-name overrides.
   Radium.Gui.Theme.Apply(Self);
   StatusDot.Brush.Color := Token(tDanger);
-  SidebarDivider.Color := Token(tBorderSubtle);
-  case ActiveTheme of
-    tkLight: BtnTheme.Caption := 'Theme: Light';
-    tkDark:  BtnTheme.Caption := 'Theme: Dark';
-  end;
+  SidebarDivider.Color  := Token(tBorderSubtle);
 end;
 
 procedure TMainForm.NotImplemented(const AFeature: string);
@@ -309,40 +341,227 @@ begin
     result := '(host not configured)';
 end;
 
-{ ── sidebar handlers ─────────────────────────────────────────────── }
+{ ── sidebar build + handlers ───────────────────────────────────── }
 
-procedure TMainForm.BtnBrokersClick(Sender: TObject);
+const
+  NAV_EXPANDED_WIDTH  = 220;
+  NAV_COLLAPSED_WIDTH = 56;
+  NAV_BTN_GAP         = 4;
+  NAV_BTN_FIRST_TOP   = 8;
+
+procedure TMainForm.BuildSidebar;
+
+  // Helper: build one TNavButton, parent + position it inside the
+  // SidebarSpring stack. Returns the new button. Top is taken by
+  // reference so we can keep the stack flowing without manual offsets.
+  function MakeNavBtn(const AIcon: TIconKind; const ACaption: string;
+    const AClick: TNotifyEvent; var ATop: Integer): TNavButton;
+  begin
+    result := TNavButton.Create(Self);
+    result.Parent := SidebarSpring;
+    result.Left   := 0;
+    result.Top    := ATop;
+    result.Width  := NAV_EXPANDED_WIDTH;
+    result.Configure(AIcon, ACaption);
+    result.OnNavClick := AClick;
+    Inc(ATop, NAV_ROW_HEIGHT + NAV_BTN_GAP);
+  end;
+
+var
+  topY: Integer;
 begin
-  // Single sidebar destination → both tabs of TBrokersFrame. One
-  // /status call updates both tabs in lockstep.
-  ShowBrokersFrame(False);
+  // Toggle lives in the top group's right slot. We size and position
+  // it in ApplyNavState so collapsing recentres it.
+  FNavToggle := TNavButton.Create(Self);
+  FNavToggle.Parent := SidebarTopGroup;
+  FNavToggle.Left   := 8;
+  FNavToggle.Top    := 12;
+  FNavToggle.Width  := NAV_ICON_BOX_WIDTH;
+  FNavToggle.Configure(iconList, '');
+  FNavToggle.OnNavClick := NavToggleClicked;
+
+  // Main nav stack — Thorium Server / Trade / Plans / Clerk / AI.
+  // "Thorium Server" hosts Status / Sessions / Risk as tabs because
+  // all three are daemon-side state — operator goes there to inspect
+  // or change anything thoriumd-facing. Trade sits next because it's
+  // the second-most-used panel: broker state + order entry on the
+  // same sidebar tap target.
+  topY := NAV_BTN_FIRST_TOP;
+  FNavBrokers := MakeNavBtn(iconBrokers, 'Thorium Server', NavBrokersClicked, topY);
+  FNavTrade   := MakeNavBtn(iconNew,     'Trade',          NavTradeClicked,   topY);
+  FNavPlans   := MakeNavBtn(iconPlans,   'Plans',          NavPlansClicked,   topY);
+  FNavClerk   := MakeNavBtn(iconClerk,   'Clerk',          NavClerkClicked,   topY);
+  FNavAi      := MakeNavBtn(iconAi,      'AI',             NavAiClicked,      topY);
+
+  // Bottom group hosts the operator-utility buttons. Theme above
+  // Settings — Theme is the more frequent click (lighting changes
+  // through the day) so it gets the closer slot.
+  FNavTheme := TNavButton.Create(Self);
+  FNavTheme.Parent := SidebarBotGroup;
+  FNavTheme.Left   := 0;
+  FNavTheme.Top    := 8;
+  FNavTheme.Width  := NAV_EXPANDED_WIDTH;
+  // Configured in RefreshThemeButton — it picks sun/moon glyph +
+  // caption based on the current ActiveTheme so the button reads
+  // as "what clicking will switch you to".
+  FNavTheme.OnNavClick := NavThemeClicked;
+
+  FNavSettings := TNavButton.Create(Self);
+  FNavSettings.Parent := SidebarBotGroup;
+  FNavSettings.Left   := 0;
+  FNavSettings.Top    := 8 + NAV_ROW_HEIGHT + NAV_BTN_GAP;
+  FNavSettings.Width  := NAV_EXPANDED_WIDTH;
+  FNavSettings.Configure(iconSettings, 'Settings');
+  FNavSettings.OnNavClick := NavSettingsClicked;
+end;
+
+procedure TMainForm.ApplyNavState;
+var
+  surf, hover, fg, fgActive: TColor;
+  w: Integer;
+
+  procedure ApplyTo(B: TNavButton);
+  begin
+    if B = nil then exit;
+    B.SetColors(surf, hover, hover, fg, fgActive);
+    B.SetCollapsed(FNavCollapsed);
+    if FNavCollapsed then
+      B.Width := NAV_COLLAPSED_WIDTH
+    else
+      B.Width := NAV_EXPANDED_WIDTH;
+  end;
+
+begin
+  // Sidebar surface bg + colour roles drawn from the Theme tokens so
+  // any future palette tweak doesn't fork between this and Apply().
+  surf     := Token(tBgSurface);
+  hover    := Token(tBgElevated);
+  fg       := Token(tFgSecondary);
+  fgActive := Token(tFgPrimary);
+
+  if FNavCollapsed then
+    w := NAV_COLLAPSED_WIDTH
+  else
+    w := NAV_EXPANDED_WIDTH;
+  SidebarHost.Width := w;
+
+  // Brand region only renders in expanded mode — there's no room for
+  // it at 56px wide, and the toggle alone reads as the "logo" tile.
+  BrandLabel.Visible   := not FNavCollapsed;
+  BrandTagline.Visible := not FNavCollapsed;
+
+  ApplyTo(FNavToggle);
+  ApplyTo(FNavBrokers);
+  ApplyTo(FNavTrade);
+  ApplyTo(FNavPlans);
+  ApplyTo(FNavClerk);
+  ApplyTo(FNavAi);
+  ApplyTo(FNavTheme);
+  ApplyTo(FNavSettings);
+end;
+
+procedure TMainForm.SetActiveNav(AActive: TNavButton);
+  procedure Mark(B: TNavButton);
+  begin
+    if B <> nil then B.SetActive(B = AActive);
+  end;
+begin
+  Mark(FNavBrokers);
+  Mark(FNavTrade);
+  Mark(FNavPlans);
+  Mark(FNavClerk);
+  Mark(FNavAi);
+  Mark(FNavSettings);
+end;
+
+procedure TMainForm.NavToggleClicked(Sender: TObject);
+begin
+  FNavCollapsed := not FNavCollapsed;
+  ApplyNavState;
+end;
+
+procedure TMainForm.NavBrokersClicked(Sender: TObject);
+begin
+  // Lands on the Status tab (index 0) and refreshes both Status +
+  // Sessions from a single /status call. Risk is the third tab; the
+  // operator switches into it explicitly when they want to change a
+  // knob — we don't pre-fetch it here.
+  SetActiveNav(FNavBrokers);
+  ShowBrokersFrame;
   RefreshBrokers;
 end;
 
-procedure TMainForm.BtnPlansClick(Sender: TObject);
+procedure TMainForm.NavTradeClicked(Sender: TObject);
 begin
+  SetActiveNav(FNavTrade);
+  ShowTradeFrame;
+  RefreshTrade;
+end;
+
+procedure TMainForm.NavPlansClicked(Sender: TObject);
+begin
+  SetActiveNav(FNavPlans);
   ShowPlansFrame;
   RefreshPlans;
 end;
 
-procedure TMainForm.BtnRiskClick(Sender: TObject);
+procedure TMainForm.NavClerkClicked(Sender: TObject);
 begin
-  ShowRiskFrame;
-  RefreshRisk;
-end;
-
-procedure TMainForm.BtnClerkClick(Sender: TObject);
-begin
+  SetActiveNav(FNavClerk);
   ShowClerkFrame;
 end;
 
-procedure TMainForm.BtnAiClick(Sender: TObject);
+procedure TMainForm.NavAiClicked(Sender: TObject);
 begin
+  SetActiveNav(FNavAi);
   ShowAiFrame;
   RefreshAi;
 end;
 
-procedure TMainForm.BtnSettingsClick(Sender: TObject);
+procedure TMainForm.RefreshThemeButton;
+begin
+  if FNavTheme = nil then exit;
+  // Show the icon for what clicking will switch you TO. So in light
+  // mode → moon (= "switch to dark"), in dark mode → sun.
+  case ActiveTheme of
+    tkLight: FNavTheme.Configure(iconMoon, 'Dark mode');
+    tkDark:  FNavTheme.Configure(iconSun,  'Light mode');
+  end;
+end;
+
+procedure TMainForm.NavThemeClicked(Sender: TObject);
+var
+  next: TThemeKind;
+  s:    TRadiumSettings;
+begin
+  // Toggle. ApplyFusionTheme repaints every Qt widget by reapplying
+  // QApplication's palette + stylesheet. Theme.Apply(Self) follows
+  // for the LCL-painted bits (sidebar surface bg, semantic font
+  // colours, status dot). The pair keeps Qt and LCL in lockstep.
+  if ActiveTheme = tkLight then next := tkDark else next := tkLight;
+  ApplyFusionTheme(next);
+  ApplyActiveTheme;
+  ApplyNavState;
+  RefreshThemeButton;
+  // Persist so the operator's choice survives a restart. Only when
+  // settings already exist on disk — otherwise the first-run wizard
+  // owns the first save and we don't want to scribble a half-config.
+  if LoadSettings(s) then
+  begin
+    case next of
+      tkDark:  s.Theme := 'dark';
+      tkLight: s.Theme := 'light';
+    end;
+    try
+      SaveSettings(s);
+    except
+      // Disk write failed — toggle still applied in-memory; the
+      // operator can retry on next toggle. Don't block the UI.
+    end;
+  end;
+end;
+
+procedure TMainForm.NavSettingsClicked(Sender: TObject);
 var
   loaded: TRadiumSettings;
   dlg:    TSetupForm;
@@ -365,15 +584,6 @@ begin
   end;
 end;
 
-procedure TMainForm.BtnThemeClick(Sender: TObject);
-begin
-  case ActiveTheme of
-    tkLight: SetActiveTheme(tkDark);
-    tkDark:  SetActiveTheme(tkLight);
-  end;
-  ApplyActiveTheme;
-end;
-
 { ── frame plumbing ───────────────────────────────────────────────── }
 
 procedure TMainForm.HideAllFrames;
@@ -383,17 +593,29 @@ begin
   // assignment, no z-order surprises.
   WelcomeCard.Visible := False;
   if FBrokersFrame <> nil then FBrokersFrame.Visible := False;
+  if FTradeFrame <> nil then FTradeFrame.Visible := False;
   if FPlansFrame <> nil then FPlansFrame.Visible := False;
-  if FRiskFrame <> nil then FRiskFrame.Visible := False;
   if FClerkFrame <> nil then FClerkFrame.Visible := False;
   if FAiFrame <> nil then FAiFrame.Visible := False;
-  // Pause the status auto-refresh whenever Brokers isn't visible —
-  // no point burning /status calls when the operator is on Plans /
-  // Risk / etc. Resumed in ShowBrokersFrame.
+  // Pause the /status auto-refresh whenever Thorium Server isn't
+  // visible — no point burning calls when the operator is on Plans
+  // / Trade / etc. Resumed in ShowBrokersFrame.
   if FStatusTimer <> nil then FStatusTimer.Enabled := False;
 end;
 
-procedure TMainForm.ShowBrokersFrame(AStatusTab: Boolean);
+procedure TMainForm.BrokersTabChanged(Sender: TObject);
+begin
+  // Risk tab is lazy-loaded — its frame creates with empty fields
+  // and only fetches /api/risk when the operator switches to it.
+  // Sessions + Status share the existing /status snapshot fetched
+  // by RefreshBrokers, so no extra work is needed there.
+  if FBrokersFrame = nil then exit;
+  if FBrokersFrame.Tabs.ActivePage = nil then exit;
+  if SameText(FBrokersFrame.Tabs.ActivePage.Caption, 'Risk') then
+    RefreshRisk;
+end;
+
+procedure TMainForm.ShowBrokersFrame;
 begin
   HideAllFrames;
   if FBrokersFrame = nil then
@@ -402,28 +624,36 @@ begin
     FBrokersFrame.Parent := CenterHost;
     FBrokersFrame.Align  := alClient;
 
+    // Status-tab event wiring (default landing tab).
+    FBrokersFrame.Status.OnReload     := StatusReload;
+    FBrokersFrame.Status.OnAutoToggle := StatusAutoToggle;
+
     // Sessions-tab event wiring (same as the old standalone frame).
     FBrokersFrame.Sessions.OnAttachClicked  := SessionsAttach;
     FBrokersFrame.Sessions.OnModifyClicked  := SessionsModify;
     FBrokersFrame.Sessions.OnDetachClicked  := SessionsDetach;
     FBrokersFrame.Sessions.OnPromoteClicked := SessionsPromote;
 
-    // Status-tab event wiring.
-    FBrokersFrame.Status.OnReload     := StatusReload;
-    FBrokersFrame.Status.OnAutoToggle := StatusAutoToggle;
+    // Risk-tab event wiring — folded into Thorium Server panel
+    // 2026-05-03; it used to be a top-level sidebar destination.
+    FBrokersFrame.Risk.OnLoad := RiskLoad;
+    FBrokersFrame.Risk.OnSave := RiskSave;
+
+    // Tab-switch hook: fetches /api/risk lazily when the operator
+    // moves to the Risk tab.
+    FBrokersFrame.Tabs.OnChange := BrokersTabChanged;
 
     Radium.Gui.Theme.Apply(FBrokersFrame);
   end
   else
     FBrokersFrame.Visible := True;
 
-  if AStatusTab then
-    FBrokersFrame.Tabs.ActivePageIndex := 1
-  else
-    FBrokersFrame.Tabs.ActivePageIndex := 0;
+  // Always land on Status — operator's first question is "is the
+  // daemon healthy". Sessions + Risk are explicit clicks from there.
+  FBrokersFrame.Tabs.ActivePageIndex := 0;
 
-  // Spin up (or resume) the 5s status auto-refresh while Brokers is
-  // visible. HideAllFrames pauses it.
+  // Spin up (or resume) the 5s status auto-refresh while Thorium
+  // Server is visible. HideAllFrames pauses it.
   if FStatusTimer = nil then
   begin
     FStatusTimer := TTimer.Create(Self);
@@ -452,22 +682,6 @@ begin
   end
   else
     FPlansFrame.Visible := True;
-end;
-
-procedure TMainForm.ShowRiskFrame;
-begin
-  HideAllFrames;
-  if FRiskFrame = nil then
-  begin
-    FRiskFrame := TRiskFrame.Create(Self);
-    FRiskFrame.Parent := CenterHost;
-    FRiskFrame.Align  := alClient;
-    FRiskFrame.OnLoad := RiskLoad;
-    FRiskFrame.OnSave := RiskSave;
-    Radium.Gui.Theme.Apply(FRiskFrame);
-  end
-  else
-    FRiskFrame.Visible := True;
 end;
 
 procedure TMainForm.ShowClerkFrame;
@@ -511,6 +725,25 @@ begin
   end
   else
     FAiFrame.Visible := True;
+end;
+
+procedure TMainForm.ShowTradeFrame;
+begin
+  HideAllFrames;
+  if FTradeFrame = nil then
+  begin
+    FTradeFrame := TTradeFrame.Create(Self);
+    FTradeFrame.Parent := CenterHost;
+    FTradeFrame.Align  := alClient;
+    FTradeFrame.OnSymbolSearch   := TradeSymbolSearch;
+    FTradeFrame.OnPlaceRequested := TradePlaceRequested;
+    FTradeFrame.OnAddRequested   := TradeAddRequested;
+    FTradeFrame.OnExitRequested  := TradeExitRequested;
+    FTradeFrame.OnRefreshClicked := TradeRefreshClicked;
+    Radium.Gui.Theme.Apply(FTradeFrame);
+  end
+  else
+    FTradeFrame.Visible := True;
 end;
 
 procedure TMainForm.RefreshBrokers;
@@ -977,8 +1210,11 @@ var
   rk: TRiskConfig;
   i: Integer;
   instOpts: array of RawUtf8;
+  riskFrame: TRiskFrame;
 begin
-  if FRiskFrame = nil then exit;
+  if FBrokersFrame = nil then exit;
+  riskFrame := FBrokersFrame.Risk;
+  if riskFrame = nil then exit;
   // Populate the scope picker so the per-broker option is visible
   // (read-only today). Same instance list the Plans frame uses.
   if Length(FCachedSessions) > 0 then
@@ -986,12 +1222,12 @@ begin
     SetLength(instOpts, Length(FCachedSessions));
     for i := 0 to High(FCachedSessions) do
       instOpts[i] := FCachedSessions[i].InstanceId;
-    FRiskFrame.SetInstanceOptions(instOpts);
+    riskFrame.SetInstanceOptions(instOpts);
   end;
 
   try
     EnsureClient;
-    FRiskFrame.SetStatusText('Loading from thoriumd...', 0);
+    riskFrame.SetStatusText('Loading from thoriumd...', 0);
     Screen.Cursor := crHourGlass;
     try
       rk := FClient.RiskGet;
@@ -1001,13 +1237,13 @@ begin
   except
     on E: Exception do
     begin
-      FRiskFrame.SetStatusText('Could not load risk: ' + E.Message, -1);
+      riskFrame.SetStatusText('Could not load risk: ' + E.Message, -1);
       ShowMessage(HumanError(E, 'Load risk', HostForError));
       exit;
     end;
   end;
-  FRiskFrame.SetRisk(rk);
-  FRiskFrame.SetStatusText('Loaded ' + FormatDateTime('hh:nn', Now) + ' IST.', 0);
+  riskFrame.SetRisk(rk);
+  riskFrame.SetStatusText('Loaded ' + FormatDateTime('hh:nn', Now) + ' IST.', 0);
 end;
 
 procedure TMainForm.RiskLoad(Sender: TObject);
@@ -1018,7 +1254,11 @@ end;
 procedure TMainForm.RiskSave(Sender: TObject; const APatch: TRiskPatch);
 var
   rk: TRiskConfig;
+  riskFrame: TRiskFrame;
 begin
+  if FBrokersFrame = nil then exit;
+  riskFrame := FBrokersFrame.Risk;
+  if riskFrame = nil then exit;
   try
     EnsureClient;
     Screen.Cursor := crHourGlass;
@@ -1030,15 +1270,15 @@ begin
   except
     on E: Exception do
     begin
-      FRiskFrame.SetStatusText('Save failed: ' + E.Message, -1);
+      riskFrame.SetStatusText('Save failed: ' + E.Message, -1);
       ShowMessage(HumanError(E, 'Save risk', HostForError));
       exit;
     end;
   end;
   // Successful save → take the just-saved values as the new baseline
   // for "modified vs original" detection on the next save.
-  FRiskFrame.CommitSavedSnapshot(rk);
-  FRiskFrame.SetStatusText('Saved ' + FormatDateTime('hh:nn', Now) + ' IST.', 1);
+  riskFrame.CommitSavedSnapshot(rk);
+  riskFrame.SetStatusText('Saved ' + FormatDateTime('hh:nn', Now) + ' IST.', 1);
 end;
 
 { ── clerk frame wiring ─────────────────────────────────────────────── }
@@ -1317,6 +1557,277 @@ begin
       FAiFrame.AppendChatReply(reply, True);
     end;
   end;
+end;
+
+{ ── trade frame wiring ──────────────────────────────────────────── }
+
+// FirstSessionInstance — the trade pad needs an instance_id to send
+// to thoriumd. We default to whichever session is feed-broker (so
+// quotes + tradebook line up); fallback to the first attached session.
+function FirstFeedOrAnyInstance(const ASessions: TStatusSessionArray): RawUtf8;
+var
+  i: Integer;
+begin
+  result := '';
+  for i := 0 to High(ASessions) do
+    if ASessions[i].IsFeedBroker then
+    begin
+      result := ASessions[i].InstanceId;
+      exit;
+    end;
+  if Length(ASessions) > 0 then
+    result := ASessions[0].InstanceId;
+end;
+
+// ParsePositionsRaw — turn /api/v1/positionbook JSON into typed
+// TPositionRow array. Mirrors the broker-agnostic shape thoriumd
+// promises: { symbol, exchange, product, netqty, avgprice, ltp,
+// pnl }. Defensive on field-name variants per broker.
+function ParsePositionsRaw(const ARaw: RawUtf8): TPositionRowArray;
+var
+  parsed, rows, row: variant;
+  i, n: Integer;
+  d: PDocVariantData;
+begin
+  SetLength(result, 0);
+  if ARaw = '' then exit;
+  parsed := _Json(ARaw);
+  if VarIsEmptyOrNull(parsed) then exit;
+  d := _Safe(parsed);
+  // Either a bare array or { positions: [...] } — accept both.
+  if VarIsArray(parsed) then
+    rows := parsed
+  else if d^.Exists('positions') then
+    rows := d^.Value['positions']
+  else
+    rows := parsed;
+  if not VarIsArray(rows) then exit;
+  n := _Safe(rows)^.Count;
+  SetLength(result, n);
+  for i := 0 to n - 1 do
+  begin
+    row := _Safe(rows)^.Values[i];
+    // CID is the canonical identifier — prefer the 'cid' field
+    // explicitly. Some adapters return only 'symbol' (broker key) on
+    // positionbook; we tolerate that as a last-resort fallback but
+    // place_order then has to round-trip a broker-key, which thoriumd
+    // accepts. Search dropdown produces real CIDs; positions
+    // returning broker keys is a per-adapter compliance gap, not a
+    // Radium bug.
+    result[i].Cid          := _Safe(row)^.U['cid'];
+    if result[i].Cid = '' then
+      result[i].Cid        := _Safe(row)^.U['symbol'];
+    result[i].CidExchange  := _Safe(row)^.U['cid_exchange'];
+    if result[i].CidExchange = '' then
+      result[i].CidExchange := _Safe(row)^.U['exchange'];
+    result[i].DisplayName  := string(result[i].Cid);
+    result[i].Product      := ProductFromWire(_Safe(row)^.U['product']);
+    result[i].NetQuantity  := _Safe(row)^.I['netqty'];
+    if result[i].NetQuantity = 0 then
+      result[i].NetQuantity := _Safe(row)^.I['net_quantity'];
+    result[i].AvgPrice     := _Safe(row)^.D['avgprice'];
+    if result[i].AvgPrice = 0 then
+      result[i].AvgPrice   := _Safe(row)^.D['average_price'];
+    result[i].Ltp          := _Safe(row)^.D['ltp'];
+    result[i].Pnl          := _Safe(row)^.D['pnl'];
+    result[i].LotSize      := _Safe(row)^.I['lot_size'];
+    if result[i].LotSize = 0 then
+      result[i].LotSize    := _Safe(row)^.I['lotsize'];
+    result[i].Segment      := SegmentForExchange(result[i].CidExchange);
+  end;
+end;
+
+procedure TMainForm.RefreshTrade;
+var
+  rk:           TRiskConfig;
+  posRaw:       RawUtf8;
+  trades, ords: RawUtf8;
+  positions:    TPositionRowArray;
+  ambient:      TAmbientTrading;
+  inst:         RawUtf8;
+  i:            Integer;
+  tradeLines:   TStringList;
+  ordersLines:  TStringList;
+begin
+  if FTradeFrame = nil then exit;
+  inst := FirstFeedOrAnyInstance(FCachedSessions);
+  FTradeFrame.SetInstance(inst);
+
+  if inst = '' then
+  begin
+    FTradeFrame.SetUpdatedHint('No broker attached — attach one in Thorium Server › Sessions');
+    exit;
+  end;
+
+  try
+    EnsureClient;
+    Screen.Cursor := crHourGlass;
+    try
+      rk := FClient.RiskGet;
+      posRaw := FClient.PositionbookGet(inst);
+      trades := FClient.TradebookGet(inst);
+      ords   := FClient.OrderbookGetSafe(inst);
+    finally
+      Screen.Cursor := crDefault;
+    end;
+  except
+    on E: Exception do
+    begin
+      FTradeFrame.SetUpdatedHint('Refresh failed: ' + E.Message);
+      exit;
+    end;
+  end;
+
+  positions := ParsePositionsRaw(posRaw);
+  FTradeFrame.SetRiskConfig(rk);
+  FTradeFrame.SetPositions(positions);
+
+  // Tradebook + orderbook get one row per JSON object for now —
+  // pretty rendering is a future polish; the raw row keeps every
+  // field accessible. ParseTradebookRaw could format a real grid
+  // when we know the columns the operator wants.
+  tradeLines := TStringList.Create;
+  ordersLines := TStringList.Create;
+  try
+    if trades <> '' then tradeLines.Add(string(trades));
+    if ords <> '' then ordersLines.Add(string(ords));
+    FTradeFrame.SetTradebookText(tradeLines.ToStringArray);
+    FTradeFrame.SetOrderbookText(ordersLines.ToStringArray);
+  finally
+    tradeLines.Free;
+    ordersLines.Free;
+  end;
+
+  // Compose ambient state for the validator. Symbol-PnL stays 0
+  // until we wire per-symbol breakdown — operator sees daily-loss
+  // breaches via TodayPnl regardless.
+  FillChar(ambient, SizeOf(ambient), 0);
+  ambient.NowIst := Now;
+  ambient.OpenOrderCount := 0; // refine when orderbook is parsed
+  for i := 0 to High(positions) do
+    ambient.TodayPnlInr := ambient.TodayPnlInr + positions[i].Pnl;
+  // Margin/funds — leave zero for now so the margin checks short-
+  // circuit cleanly. A future RefreshTrade slice calls FundsGet.
+  FTradeFrame.SetAmbient(ambient);
+
+  FTradeFrame.SetUpdatedHint(
+    'Updated ' + FormatDateTime('hh:nn:ss', Now) + ' IST');
+end;
+
+procedure TMainForm.TradeSymbolSearch(Sender: TObject; const AQuery: RawUtf8;
+  out AResults: TInstrumentArray);
+var
+  inst: RawUtf8;
+begin
+  SetLength(AResults, 0);
+  inst := FirstFeedOrAnyInstance(FCachedSessions);
+  if inst = '' then exit;
+  try
+    EnsureClient;
+    AResults := FClient.SymbolSearch(AQuery, '', 25, inst);
+  except
+    on E: Exception do
+      // Swallow — autocomplete shouldn't pop a dialog on every keystroke.
+      SetLength(AResults, 0);
+  end;
+end;
+
+procedure TMainForm.TradePlaceRequested(Sender: TObject;
+  const APlanned: TPlannedOrder);
+var
+  msg, orderId: string;
+  reply: Integer;
+begin
+  // Always confirm. Operator clicks Place → modal lays out exactly
+  // what we're about to send. Any vsBlock finding has already
+  // disabled the Place button so we know the validator agreed.
+  msg :=
+    Format('%s %d %s on %s @ %s', [
+      string(ActionWire(APlanned.Action)),
+      APlanned.Quantity,
+      string(APlanned.InstrumentType),
+      APlanned.DisplayName,
+      string(PriceTypeWire(APlanned.PriceType))]) + LineEnding;
+  if APlanned.Price > 0 then
+    msg := msg + Format('Price: %.2f', [APlanned.Price]) + LineEnding;
+  if APlanned.Trigger > 0 then
+    msg := msg + Format('Trigger: %.2f', [APlanned.Trigger]) + LineEnding;
+  msg := msg + 'Product: ' + string(ProductWire(APlanned.Product)) + LineEnding +
+         LineEnding + 'Place this order?';
+
+  reply := MessageDlg('Confirm order', msg, mtConfirmation,
+                       [mbYes, mbNo], 0);
+  if reply <> mrYes then exit;
+
+  try
+    EnsureClient;
+    Screen.Cursor := crHourGlass;
+    try
+      orderId := string(FClient.PlaceOrder(
+        APlanned.Cid, APlanned.CidExchange,
+        ActionWire(APlanned.Action),
+        PriceTypeWire(APlanned.PriceType),
+        ProductWire(APlanned.Product),
+        APlanned.Quantity, APlanned.Price, APlanned.Trigger,
+        APlanned.InstanceId));
+    finally
+      Screen.Cursor := crDefault;
+    end;
+  except
+    on E: Exception do
+    begin
+      ShowMessage(HumanError(E, 'Place order', HostForError));
+      exit;
+    end;
+  end;
+
+  ShowMessage('Order placed.' + LineEnding +
+              'Broker order id: ' + orderId);
+  RefreshTrade;
+end;
+
+procedure TMainForm.TradeAddRequested(Sender: TObject;
+  const ARow: TPositionRow);
+begin
+  if FTradeFrame = nil then exit;
+  FTradeFrame.PrefillFromPosition(ARow);
+end;
+
+procedure TMainForm.TradeExitRequested(Sender: TObject;
+  const ARow: TPositionRow);
+var
+  reply: Integer;
+  orderId: string;
+begin
+  reply := MessageDlg('Exit position',
+    Format('Close %s (qty %d, P&L %.2f)?',
+      [ARow.DisplayName, ARow.NetQuantity, ARow.Pnl]),
+    mtConfirmation, [mbYes, mbNo], 0);
+  if reply <> mrYes then exit;
+
+  try
+    EnsureClient;
+    Screen.Cursor := crHourGlass;
+    try
+      orderId := string(FClient.ClosePosition(
+        ARow.Cid, ARow.CidExchange, ARow.InstanceId));
+    finally
+      Screen.Cursor := crDefault;
+    end;
+  except
+    on E: Exception do
+    begin
+      ShowMessage(HumanError(E, 'Close position', HostForError));
+      exit;
+    end;
+  end;
+  ShowMessage('Exit submitted. Broker order id: ' + orderId);
+  RefreshTrade;
+end;
+
+procedure TMainForm.TradeRefreshClicked(Sender: TObject);
+begin
+  RefreshTrade;
 end;
 
 { ── status frame wiring ────────────────────────────────────────────── }

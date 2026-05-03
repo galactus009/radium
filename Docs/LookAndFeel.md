@@ -40,8 +40,11 @@ visible *action* answers to a semantic kind from §1.5.
 ## 1. Palette
 
 Two themes ship: **Light** (default; institutional, bright) and **Dark**
-(after-hours / charts). The user picks via View → Theme; the choice
-persists in app settings.
+(after-hours / charts). The user toggles via the sidebar's sun/moon
+button (icon shows what clicking switches *to*); the choice persists
+in `~/.radium/settings.json` as `theme: 'light' | 'dark'` and is
+re-applied at boot before the main form is constructed so the welcome
+card never flashes the wrong palette.
 
 Tokens are RGB hex. Apply via Qt6 stylesheet (see §4) — never hard-code
 colours into individual `.lfm` files.
@@ -156,8 +159,8 @@ Two examples baked in:
 
 - **8px grid.** Padding/margin always a multiple of 4 (preferably 8).
 - **Window chrome:** native title bar; no custom frame painting.
-- **Main menu:** native menu (macOS app menu bar; Win/Linux in-window
-  menu). Drives navigation; no toolbar of duplicated commands.
+- **Main menu:** none. Navigation lives in the sidebar (§5); no
+  `TMainMenu`, no toolbar of duplicated commands.
 - **Status bar:** single row, `bg.surface`, 28px tall. Sections
   (left→right): connection status • feed health • selected instance •
   IST clock.
@@ -194,9 +197,10 @@ in the IDE), and the running app honours the palette.
 
 ## 5. Sidebar-driven shell
 
-The main window's left sidebar IS the navigation. 200px fixed width,
-buttons stacked vertically, one button per top-level destination.
-Centre frame swaps on click.
+The main window's left sidebar IS the navigation. 220px expanded /
+56px collapsed (toggled via the top hamburger), buttons stacked
+vertically, one button per top-level destination. Centre frame swaps
+on click.
 
 ```
 +----------------+--------------------------------------+
@@ -231,11 +235,15 @@ Decisions baked in:
 
 ## 6. Iconography
 
-- Outlined SVG-style icons, 16px or 20px. Single colour at the active
-  `fg.secondary` token, recolour on hover/active.
-- **Source:** Lucide (https://lucide.dev) — MIT, redrawable, modern.
-  Bundle as `Resources/Icons/*.svg` and load via `TPicture`. Only add
-  icons we actually use; don't bulk-import.
+- Outlined font-rendered icons, 18-20px. Single colour at the active
+  `fg.secondary` token, recolour on hover/active via standard label
+  Font.Color (no SVG raster pipeline).
+- **Source:** Phosphor (https://phosphoricons.com) regular weight —
+  MIT, single TTF, PUA codepoints. Drop the TTF into
+  `Resources/Fonts/` (either `Phosphor.ttf` or `Phosphor-Regular.ttf`
+  is accepted); `LoadIconFont` registers it with Qt at startup. The
+  semantic role → codepoint map lives in `Source/Gui/Radium.Gui.Icons.pas`
+  (`TIconKind` + `IconGlyph()`); add a member when a new role appears.
 - No emoji, no platform-specific icon sets, no skeuomorphism.
 
 ---

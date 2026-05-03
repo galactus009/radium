@@ -48,6 +48,21 @@
         <UnitName Value="Radium.Gui.Theme"/>
       </Unit>
       <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.QtFusion.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.QtFusion"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.Icons.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.Icons"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.NavButton.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.NavButton"/>
+      </Unit>
+      <Unit>
         <Filename Value="../Source/Gui/Radium.Settings.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Radium.Settings"/>
@@ -97,6 +112,26 @@
         <Filename Value="../Source/Plans/Radium.Plans.Runner.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Radium.Plans.Runner"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Trading/Radium.Trading.Types.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Trading.Types"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Trading/Radium.Trading.Validator.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Trading.Validator"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.SymbolSearch.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.SymbolSearch"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../Source/Gui/Radium.Gui.TradeFrame.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Radium.Gui.TradeFrame"/>
       </Unit>
       <Unit>
         <Filename Value="../Source/Gui/Radium.Gui.PlansFrame.pas"/>
@@ -153,7 +188,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="../Source/Gui;../Source/Cid;../Source/Api;../Source/Plans;../Source/Clerk;../Source/Sdk;../Source/Bots;../Source/Host;../Source/Types;$(MORMOT2)/src/core;$(MORMOT2)/src/lib;$(MORMOT2)/src/net;$(MORMOT2)/src/crypt;$(MORMOT2)/src/db;$(MORMOT2)/src/orm;$(MORMOT2)/src/rest;$(MORMOT2)/src/soa;$(MORMOT2)/src/app;$(MORMOT2)/src/misc"/>
+      <OtherUnitFiles Value="../Source/Gui;../Source/Cid;../Source/Api;../Source/Plans;../Source/Trading;../Source/Clerk;../Source/Sdk;../Source/Bots;../Source/Host;../Source/Types;$(MORMOT2)/src/core;$(MORMOT2)/src/lib;$(MORMOT2)/src/net;$(MORMOT2)/src/crypt;$(MORMOT2)/src/db;$(MORMOT2)/src/orm;$(MORMOT2)/src/rest;$(MORMOT2)/src/soa;$(MORMOT2)/src/app;$(MORMOT2)/src/misc"/>
       <UnitOutputDirectory Value="../Lib"/>
     </SearchPaths>
     <Parsing>

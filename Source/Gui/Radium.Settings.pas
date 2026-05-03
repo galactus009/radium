@@ -34,11 +34,14 @@ uses
   mormot.core.base;
 
 type
-  // TRadiumSettings — kept tiny on purpose. Theme persistence, proxy,
-  // window geometry land in slice 3.x once first-run flow is solid.
+  // TRadiumSettings — host + apikey for thoriumd, plus the operator's
+  // chosen theme. Theme is encoded as 'light' / 'dark' (string) on the
+  // wire so this unit stays free of Radium.Gui.Theme coupling — the
+  // GUI translates either way at the call site.
   TRadiumSettings = record
     Host:   RawUtf8;
     Apikey: RawUtf8;
+    Theme:  RawUtf8;       // 'light' (default) | 'dark'
   end;
 
 // Path of the on-disk settings file. Directory is auto-created by
@@ -92,6 +95,7 @@ var
 begin
   ASettings.Host   := '';
   ASettings.Apikey := '';
+  ASettings.Theme  := '';
   result := False;
   if not FileExists(SettingsPath) then
     exit;
@@ -104,6 +108,7 @@ begin
     exit;
   ASettings.Host   := d^.U['host'];
   ASettings.Apikey := d^.U['apikey'];
+  ASettings.Theme  := d^.U['theme'];
   result := True;
 end;
 
@@ -123,7 +128,8 @@ begin
 
   body := _ObjFast([
     'host',   ASettings.Host,
-    'apikey', ASettings.Apikey
+    'apikey', ASettings.Apikey,
+    'theme',  ASettings.Theme
   ]);
   json := VariantSaveJson(body);
 
