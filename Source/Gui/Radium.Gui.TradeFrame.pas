@@ -77,6 +77,9 @@ type
         FLblTrigger: TLabel;
         FEdtTrigger: TEdit;
       FFindings:     TMemo;
+      FResultBanner: TPanel;        // success/error toast above Place;
+        FResultLbl:  TLabel;        // hidden until DoPlaceClick reports back
+      FResultTimer:  TTimer;        // auto-dismiss banner after a few seconds
       FPlaceBar:     TPanel;
         FBtnPlace:   TButton;
 
@@ -136,6 +139,8 @@ type
     procedure RevalidateNow;
     procedure RenderFindings(const AResult: TValidationResult);
     procedure RenderPositionsGrid;
+    procedure ResultBannerTick(Sender: TObject);
+    procedure ShowResultBanner(AOk: Boolean; const AText: string);
 
   public
     constructor Create(AOwner: TComponent); override;
@@ -147,6 +152,13 @@ type
     procedure SetTradebookText(const ALines: array of string);
     procedure SetOrderbookText(const ALines: array of string);
     procedure SetUpdatedHint(const AText: string);
+    // ReportPlaceResult — host calls after Place returns. Renders a
+    // green ✓ banner with the order id (or red ✗ with the broker
+    // reason) so the operator knows the click landed and what
+    // happened. Auto-dismisses after 4s. Without this, the
+    // synchronous HTTP path means the GUI just freezes-then-unfreezes
+    // with no visible confirmation.
+    procedure ReportPlaceResult(AOk: Boolean; const AText: string);
 
     // PrefillFromPosition — Add-on-row → order pad pre-fills with the
     // same direction (long → BUY, short → SELL kept as a warning).
@@ -172,10 +184,16 @@ uses
   DateUtils;
 
 const
-  PAD_WIDTH       = 380;
+  // Pad sizing — bumped 2026-05-03 after operator feedback that the
+  // panel felt cramped. Wider input column + bigger row gap + section
+  // headers between logical groups make the form scannable. Findings
+  // get more vertical room too (was 180, now 220).
+  PAD_WIDTH       = 440;   // was 380
   ROW_H           = 36;
-  ROW_GAP         = 6;
-  LBL_W           = 100;
+  ROW_GAP         = 14;    // was 6
+  LBL_W           = 110;   // was 100
+  SECTION_GAP     = 28;    // gap before a new section header
+  SECTION_HEAD_H  = 22;    // height of "INSTRUMENT" / "ORDER" / "RISK" caps
 
 { TTradeFrame ────────────────────────────────────────────────────── }
 
@@ -223,6 +241,25 @@ procedure TTradeFrame.BuildPad;
     SetSemantic(result, skMuted);
   end;
 
+  // MakeSectionHeader — uppercase, muted, bold-small. Visually
+  // separates Instrument / Order / Risk so the operator's eye
+  // doesn't have to scan a single tall column of fields.
+  function MakeSectionHeader(AParent: TWinControl;
+    const AText: string; ATop: Integer): TLabel;
+  begin
+    result := TLabel.Create(Self);
+    result.Parent  := AParent;
+    result.Left    := 8;
+    result.Top     := ATop;
+    result.Width   := PAD_WIDTH - 16;
+    result.Height  := SECTION_HEAD_H;
+    result.Caption := AText;
+    result.AutoSize := False;
+    result.Font.Style  := [fsBold];
+    result.Font.Height := -10;
+    SetSemantic(result, skMuted);
+  end;
+
 var
   topY: Integer;
 begin
@@ -233,18 +270,23 @@ begin
   FPadHost.BevelOuter := bvNone;
   FPadHost.Caption := '';
 
-  // Symbol search at the top — variable height (collapsed = 32 vs
-  // expanded = 232 with dropdown). It anchors alTop and the pad
-  // below adjusts dynamically via TPanel autosize? No — we keep
-  // a fixed 232px slot so layout doesn't reflow on every keystroke.
+  // ── INSTRUMENT section ───────────────────────────────────────
+  MakeSectionHeader(FPadHost, 'INSTRUMENT', 8);
+
+  // Symbol search — fixed 232px slot so layout doesn't reflow on
+  // every keystroke. (Collapsed=32, expanded=232.)
   FSymbolSearch := TSymbolSearchEdit.Create(Self);
   FSymbolSearch.Parent := FPadHost;
   FSymbolSearch.Left   := 8;
-  FSymbolSearch.Top    := 8;
+  FSymbolSearch.Top    := 8 + SECTION_HEAD_H + 4;
   FSymbolSearch.Width  := PAD_WIDTH - 16;
   FSymbolSearch.OnSelected := DoSymbolSelected;
 
-  topY := 8 + 240;  // search box + dropdown area + gap
+  topY := 8 + SECTION_HEAD_H + 4 + 240;
+
+  // ── ORDER section ────────────────────────────────────────────
+  MakeSectionHeader(FPadHost, 'ORDER', topY);
+  Inc(topY, SECTION_HEAD_H + 4);
 
   // Action row: BUY / SELL toggle.
   FActionRow := MakeRow(FPadHost, topY);
@@ -350,36 +392,72 @@ begin
   FEdtTrigger.OnChange := DoTriggerChange;
   Inc(topY, ROW_H + ROW_GAP);
 
-  // Findings memo — readonly multi-line.
+  // ── RISK section ─────────────────────────────────────────────
+  Inc(topY, SECTION_GAP - ROW_H);  // a bit of air after the last input row
+  MakeSectionHeader(FPadHost, 'RISK CHECK', topY);
+  Inc(topY, SECTION_HEAD_H + 4);
+
+  // Findings memo — readonly multi-line. Anchored bottom so it
+  // grows with the pad height.
   FFindings := TMemo.Create(Self);
   FFindings.Parent := FPadHost;
   FFindings.Left   := 8;
-  FFindings.Top    := topY + 8;
+  FFindings.Top    := topY;
   FFindings.Width  := PAD_WIDTH - 16;
-  FFindings.Height := 180;
+  FFindings.Height := 220;     // was 180 — more room before scrollbar
   FFindings.ReadOnly := True;
   FFindings.WordWrap := True;
   FFindings.ScrollBars := ssVertical;
   FFindings.Anchors := [akLeft, akTop, akRight, akBottom];
   FFindings.Font.Height := -11;
 
-  // Place button at the bottom of the pad.
+  // ── result banner + place button bar ─────────────────────────
+  // Banner sits ABOVE the Place button so a successful click flashes
+  // a green ✓ at eye level; rejections stay there long enough to
+  // read the broker's reason. Hidden by default.
   FPlaceBar := TPanel.Create(Self);
   FPlaceBar.Parent := FPadHost;
   FPlaceBar.Align  := alBottom;
-  FPlaceBar.Height := 56;
+  FPlaceBar.Height := 96;       // was 56 — fits banner + place button
   FPlaceBar.BevelOuter := bvNone;
   FPlaceBar.Caption := '';
+
+  FResultBanner := TPanel.Create(Self);
+  FResultBanner.Parent := FPlaceBar;
+  FResultBanner.Left   := 8;
+  FResultBanner.Top    := 4;
+  FResultBanner.Width  := PAD_WIDTH - 16;
+  FResultBanner.Height := 32;
+  FResultBanner.BevelOuter := bvNone;
+  FResultBanner.Caption := '';
+  FResultBanner.Visible := False;
+
+  FResultLbl := TLabel.Create(Self);
+  FResultLbl.Parent := FResultBanner;
+  FResultLbl.Left   := 12;
+  FResultLbl.Top    := 8;
+  FResultLbl.Width  := PAD_WIDTH - 40;
+  FResultLbl.Height := 18;
+  FResultLbl.AutoSize := False;
+  FResultLbl.Font.Style := [fsBold];
+  FResultLbl.Caption := '';
+
+  FResultTimer := TTimer.Create(Self);
+  FResultTimer.Enabled  := False;
+  FResultTimer.Interval := 4000;   // 4s auto-dismiss
+  FResultTimer.OnTimer  := ResultBannerTick;
 
   FBtnPlace := TButton.Create(Self);
   FBtnPlace.Parent  := FPlaceBar;
   FBtnPlace.Left    := 8;
-  FBtnPlace.Top     := 8;
+  FBtnPlace.Top     := 44;        // below banner slot
   FBtnPlace.Width   := PAD_WIDTH - 16;
-  FBtnPlace.Height  := 40;
-  FBtnPlace.Caption := 'Place order';
+  FBtnPlace.Height  := 44;        // was 40 — taller, easier target
+  FBtnPlace.Caption := 'PLACE ORDER';
   FBtnPlace.Default := False;
   FBtnPlace.Enabled := False;
+  FBtnPlace.Font.Style  := [fsBold];
+  FBtnPlace.Font.Height := -13;
   FBtnPlace.OnClick := DoPlaceClick;
   SetSemantic(FBtnPlace, skPrimary);
 end;
@@ -564,17 +642,29 @@ end;
 
 procedure TTradeFrame.ApplyActionStyling;
 begin
-  // Active button gets brighter weight; inactive dims to muted. Both
-  // remain coloured by their semantic kind so meaning never gets lost.
+  // Active button gets a leading ● marker + bold + semantic colour
+  // (skBuy=success, skSell=danger). Inactive button drops to muted.
+  // Caption + Font weight are honoured by Qt6 Fusion across macOS /
+  // Linux; Color/Brush properties on TButton are not reliably honoured
+  // under Fusion, so we don't fight the theme — markers + weight
+  // carry the toggle state visually.
   if FAction = oaBuy then
   begin
+    FBtnBuy.Caption     := '● BUY';
     FBtnBuy.Font.Style  := [fsBold];
+    SetSemantic(FBtnBuy,  skBuy);
+    FBtnSell.Caption    := 'SELL';
     FBtnSell.Font.Style := [];
+    SetSemantic(FBtnSell, skMuted);
   end
   else
   begin
+    FBtnBuy.Caption     := 'BUY';
     FBtnBuy.Font.Style  := [];
+    SetSemantic(FBtnBuy,  skMuted);
+    FBtnSell.Caption    := '● SELL';
     FBtnSell.Font.Style := [fsBold];
+    SetSemantic(FBtnSell, skSell);
   end;
 end;
 
@@ -794,6 +884,37 @@ end;
 procedure TTradeFrame.SetUpdatedHint(const AText: string);
 begin
   FLblUpdated.Caption := AText;
+end;
+
+procedure TTradeFrame.ShowResultBanner(AOk: Boolean; const AText: string);
+begin
+  if AOk then
+  begin
+    FResultBanner.Color   := Token(tSuccess);
+    FResultLbl.Font.Color := clWhite;
+    FResultLbl.Caption    := '  ' + #$E2#$9C#$93 + '  ' + AText;  // ✓
+  end
+  else
+  begin
+    FResultBanner.Color   := Token(tDanger);
+    FResultLbl.Font.Color := clWhite;
+    FResultLbl.Caption    := '  ' + #$E2#$9C#$97 + '  ' + AText;  // ✗
+  end;
+  FResultBanner.Visible := True;
+  FResultTimer.Enabled  := False;
+  FResultTimer.Enabled  := True;   // restart 4s window
+end;
+
+procedure TTradeFrame.ResultBannerTick(Sender: TObject);
+begin
+  FResultTimer.Enabled  := False;
+  FResultBanner.Visible := False;
+  FResultLbl.Caption    := '';
+end;
+
+procedure TTradeFrame.ReportPlaceResult(AOk: Boolean; const AText: string);
+begin
+  ShowResultBanner(AOk, AText);
 end;
 
 procedure TTradeFrame.PrefillFromPosition(const ARow: TPositionRow);

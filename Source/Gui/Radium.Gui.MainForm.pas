@@ -1776,13 +1776,17 @@ begin
   except
     on E: Exception do
     begin
-      ShowMessage(HumanError(E, 'Place order', HostForError));
+      // Inline banner instead of a modal — operator gets the broker
+      // reason at the order pad without losing their place.
+      if FTradeFrame <> nil then
+        FTradeFrame.ReportPlaceResult(False,
+          HumanError(E, 'Place order', HostForError));
       exit;
     end;
   end;
 
-  ShowMessage('Order placed.' + LineEnding +
-              'Broker order id: ' + orderId);
+  if FTradeFrame <> nil then
+    FTradeFrame.ReportPlaceResult(True, 'Order placed — id ' + orderId);
   RefreshTrade;
 end;
 
